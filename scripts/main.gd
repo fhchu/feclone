@@ -3,7 +3,14 @@
 # Overlay display. Mirrors the structure of chess main.gd:
 #   piece_map → unit_map, legal_moves → reachable_cells,
 #   and the same undo-snapshot pattern (much simpler without chess state).
-# ChessRules is replaced by a BFS flood-fill over terrain costs.
+#
+# Levels are authored entirely in the editor — no code changes needed:
+#   • Terrain: paint the Ground TileMapLayer with the TileMap editor.
+#     Movement cost comes from the TileSet's "move_cost" custom data
+#     (grass 1, forest 2). Unpainted cells are off the map.
+#   • Units:   instance unit.tscn under Units, drag it over a tile, and
+#     set class/team/move range in the Inspector. _ready() snaps each
+#     placed unit to its nearest cell and registers it.
 
 extends Node2D
 
@@ -14,14 +21,7 @@ extends Node2D
 @onready var turn_label  : Label        = $UI/TurnLabel
 @onready var undo_button : Button       = $UI/UndoButton
 
-# ── Resources ─────────────────────────────────────────────────────────────────
-@export var unit_scene : PackedScene
-@export var unit_sheet : Texture2D
-
-# ── Ground tile atlas coordinates (base_tiles.png) ─────────────────────────────
-const GRASS         : Vector2i = Vector2i(0, 0)
-const TREES         : Vector2i = Vector2i(1, 0)  # terrain variety later
-const GROUND_SOURCE : int      = 0
+const PLAYER_TEAM : String = "blue"
 
 const ORTHO_DIRS : Array = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
 
@@ -41,41 +41,44 @@ var undo_stack : Array = []
 # ── Setup ──────────────────────────────────────────────────────────────────────
 
 func _ready() -> void:
-    _fill_ground()
     overlay.overlay_alpha = 0.5
-
-    # The basic scene: one blue lord, move range 3, middle of the map.
-    _spawn_unit("lord", "blue", Vector2i(4, 4), 3)
-
+    _register_placed_units()
     undo_button.disabled = true
     undo_button.pressed.connect(undo_move)
     turn_label.text = "Blue phase"
 
-## Paints every cell of the map with grass. Terrain maps come later;
-## painting from code keeps the scene file free of baked tile data.
-func _fill_ground() -> void:
-    for y in overlay.grid_size.y:
-        for x in overlay.grid_size.x:
-            ground.set_cell(Vector2i(x, y), GROUND_SOURCE, GRASS)
+## Snaps every designer-placed unit under Units to its nearest cell and
+## wires up its input signals.
+func _register_placed_units() -> void:
+    for unit in units_node.get_children():
+        var cell : Vector2i = overlay.world_to_cell(unit.global_position)
+        if not _in_bounds(cell):
+            push_warning("Unit '%s' sits off the painted map at %s." % [unit.name, cell])
+        if unit_map.has(cell):
+            push_warning("Units '%s' and '%s' share cell %s." %
+                    [unit_map[cell].name, unit.name, cell])
+        unit.move_to(cell, overlay.cell_center_world(cell))
+        unit.connect("drag_started",   _on_drag_started)
+        unit.connect("drag_moved",     _on_drag_moved)
+        unit.connect("drop_attempted", _on_drop_attempted)
+        unit.connect("clicked",        _on_unit_clicked)
+        unit_map[cell] = unit
 
-func _spawn_unit(unit_class: String, team: String, cell: Vector2i, move_range: int) -> void:
-    var unit = unit_scene.instantiate()
-    units_node.add_child(unit)
-    unit.setup(unit_class, team, unit_sheet, cell, move_range)
-    var world_pos : Vector2 = overlay.cell_center_world(cell)
-    unit.global_position = world_pos
-    unit._rest_position  = world_pos
-    unit.connect("drag_started",   _on_drag_started)
-    unit.connect("drag_moved",     _on_drag_moved)
-    unit.connect("drop_attempted", _on_drop_attempted)
-    unit.connect("clicked",        _on_unit_clicked)
-    unit_map[cell] = unit
+# ── Map queries ────────────────────────────────────────────────────────────────
+
+## A cell is on the map iff the designer painted ground there.
+func _in_bounds(cell: Vector2i) -> bool:
+    return ground.get_cell_source_id(cell) != -1
+
+## Movement cost to enter a cell, read from the TileSet's "move_cost"
+## custom data — so new terrain types are a TileSet edit, not a code change.
+func _terrain_cost(cell: Vector2i) -> int:
+    var data : TileData = ground.get_cell_tile_data(cell)
+    if data == null:
+        return 1
+    return data.get_custom_data("move_cost")
 
 # ── Movement range (replaces ChessRules.get_legal_moves) ──────────────────────
-
-## Movement cost to enter a cell. Uniform for now; forests/mountains later.
-func _terrain_cost(_cell: Vector2i) -> int:
-    return 1
 
 ## BFS flood-fill out to the unit's move range, accumulating terrain cost.
 ## Other units block passage and cannot be stopped on. The unit's own cell
@@ -87,7 +90,7 @@ func _get_reachable_cells(unit) -> Array:
         var cur : Vector2i = frontier.pop_front()
         for dir in ORTHO_DIRS:
             var nxt : Vector2i = cur + dir
-            if not overlay.in_bounds(nxt):
+            if not _in_bounds(nxt):
                 continue
             if unit_map.has(nxt) and unit_map[nxt] != unit:
                 continue  # later: allies passable but not stoppable, enemies block
@@ -103,6 +106,11 @@ func _get_reachable_cells(unit) -> Array:
 # ── Drag-and-drop input ────────────────────────────────────────────────────────
 
 func _on_drag_started(unit: Area2D) -> void:
+    # Enemy units aren't player-controlled; they snap back on release.
+    if unit.team != PLAYER_TEAM:
+        unit.return_to_rest()
+        return
+
     # Clear previous selection's range tiles.
     overlay.clear_range()
 
@@ -147,6 +155,9 @@ func _on_unit_clicked(unit: Area2D) -> void:
     # Second click on the same unit → deselect.
     if unit == click_selected_unit:
         _deselect()
+        return
+    # Clicking an enemy does nothing yet (later: attack target selection).
+    if unit.team != PLAYER_TEAM:
         return
     # First click: drag_started already fired on mouse-down and showed this
     # unit's range, so all we need to do here is record the click-selection.

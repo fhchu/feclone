@@ -2,9 +2,13 @@
 # Attached to the Area2D root of unit.tscn.
 # Handles sprite selection, drag-and-drop input, and hover reporting.
 # Does NOT know game rules — it signals main.gd for all decisions.
-# Adapted from chess piece.gd: piece type/color became unit class/team,
-# and units carry stats (move_range for now, more later).
+#
+# @tool so level designers get live feedback in the editor: instance
+# unit.tscn under Main/Units, drag it over a tile, and pick Unit Class /
+# Team / Move Range in the Inspector — the sprite updates immediately.
+# main.gd snaps every placed unit to its nearest cell when the game starts.
 
+@tool
 extends Area2D
 
 # ── Sprite sheet layout ────────────────────────────────────────────────────────
@@ -20,11 +24,23 @@ const TEAM_ROW : Dictionary = {
     "blue": 0, "red": 1
 }
 
-# ── Unit identity & stats ──────────────────────────────────────────────────────
-var unit_class : String   = ""               # key into CLASS_COL
-var team       : String   = ""               # "blue" or "red"
-var cell       : Vector2i = Vector2i(-1, -1)
-var move_range : int      = 3
+# ── Designer-facing properties (set in the Inspector) ──────────────────────────
+@export_enum("lord", "fighter", "cleric", "cavalier", "soldier", "mage")
+var unit_class : String = "lord":
+    set(value):
+        unit_class = value
+        _refresh_sprite()
+
+@export_enum("blue", "red")
+var team : String = "blue":
+    set(value):
+        team = value
+        _refresh_sprite()
+
+@export_range(1, 10) var move_range : int = 3
+
+# ── Runtime state ──────────────────────────────────────────────────────────────
+var cell : Vector2i = Vector2i(-1, -1)   # assigned by main.gd on registration
 
 # ── Drag state ─────────────────────────────────────────────────────────────────
 const DRAG_THRESHOLD : float = 6.0  # pixels of mouse travel before a press counts as a drag
@@ -44,20 +60,21 @@ signal drop_attempted(unit: Area2D, world_pos: Vector2)
 ## Fired when the press is released with under DRAG_THRESHOLD of movement.
 signal clicked(unit: Area2D)
 
-# ── Setup ──────────────────────────────────────────────────────────────────────
+# ── Lifecycle ──────────────────────────────────────────────────────────────────
 
-## Called by main.gd immediately after instancing.
-func setup(p_class: String, p_team: String, sheet: Texture2D,
-        p_cell: Vector2i, p_move_range: int) -> void:
-    unit_class = p_class
-    team       = p_team
-    cell       = p_cell
-    move_range = p_move_range
-    _apply_sprite(sheet)
+func _ready() -> void:
+    _refresh_sprite()
+    if Engine.is_editor_hint():
+        return
+    input_pickable = true
+    connect("input_event", _on_input_event)
 
-func _apply_sprite(sheet: Texture2D) -> void:
+## Points the sprite region at the right pieces.png tile for class + team.
+## Runs in the editor too (exports call it from their setters).
+func _refresh_sprite() -> void:
+    if not is_node_ready():
+        return  # setters fire during scene load, before children exist
     var sprite : Sprite2D = $Sprite2D
-    sprite.texture        = sheet
     sprite.region_enabled = true
     sprite.region_rect    = Rect2(
         CLASS_COL[unit_class] * SPRITE_SIZE,
@@ -66,14 +83,8 @@ func _apply_sprite(sheet: Texture2D) -> void:
         SPRITE_SIZE
     )
 
-# ── Lifecycle ──────────────────────────────────────────────────────────────────
-
-func _ready() -> void:
-    input_pickable = true
-    connect("input_event", _on_input_event)
-
 func _process(_delta: float) -> void:
-    if not _is_dragging:
+    if Engine.is_editor_hint() or not _is_dragging:
         return
     global_position = get_global_mouse_position() - _drag_offset
     emit_signal("drag_moved", self, global_position)

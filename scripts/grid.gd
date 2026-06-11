@@ -14,8 +14,6 @@ const TILE_HOVER  : Vector2i = Vector2i(2, 0)  # cyan: tile under the dragged un
 const SOURCE_ID   : int      = 0               # atlas source index
 const DEFAULT_OVERLAY_ALPHA : float = 0.5
 
-@export var grid_size : Vector2i = Vector2i(10, 10)
-
 # ── Tracked cells (so we can erase selectively) ────────────────────────────────
 var _range_cells : Dictionary = {}     # Vector2i → Vector2i (cell → atlas tile)
 var _hover_cell  : Variant    = null   # Vector2i or null
@@ -31,17 +29,11 @@ func _ready() -> void:
 
 # ── Coordinate conversion (delegates to TileMapLayer built-ins) ───────────────
 
-func in_bounds(cell: Vector2i) -> bool:
-    return cell.x >= 0 and cell.x < grid_size.x \
-       and cell.y >= 0 and cell.y < grid_size.y
-
-## Converts a global world position to a grid cell.
-## Returns Vector2i(-1,-1) if out of bounds.
+## Converts a global world position to a grid cell. Bounds are main.gd's
+## concern (a cell is on the map iff ground is painted there), so any
+## world position maps to some cell.
 func world_to_cell(world_pos: Vector2) -> Vector2i:
-    var cell : Vector2i = local_to_map(to_local(world_pos))
-    if in_bounds(cell):
-        return cell
-    return Vector2i(-1, -1)
+    return local_to_map(to_local(world_pos))
 
 ## Returns the global world-space centre of a grid cell.
 func cell_center_world(cell: Vector2i) -> Vector2:
