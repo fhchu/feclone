@@ -1,0 +1,14 @@
+# lefthook configuration — https://lefthook.dev
+#
+# Runs the GUT unit-test suite before every `git push`. Install the hook once
+# per clone with:
+#   ./tools/setup-hooks.sh      (installs lefthook if needed, then runs `lefthook install`)
+# or, if you already have lefthook:
+#   lefthook install
+#
+# The runner skips with a warning when Godot isn't found locally, so it never
+# blocks a push on a machine without Godot — CI is the backstop.
+pre-push:
+  commands:
+    unit-tests:
+      run: ./tools/run_godot_tests.sh

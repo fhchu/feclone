@@ -1,0 +1,36 @@
+name: Unit Tests
+
+# Run the GUT suite on every pull request and on pushes to main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel an in-progress run when new commits are pushed to the same ref.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: GUT (headless)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs Godot and puts it on PATH as `godot`. Must match the engine
+      # version in project.godot (config/features "4.6"). use-dotnet: false
+      # because this is a pure GDScript project.
+      - name: Set up Godot
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.6.3
+          use-dotnet: false
+
+      # Same runner the pre-push hook uses, so local and CI behave identically.
+      # It imports the project, runs GUT, and fails on a failing assertion OR a
+      # test script that won't load. --require makes a missing Godot a hard error
+      # (rather than the local "skip with a warning" behaviour).
+      - name: Run unit tests
+        run: bash tools/run_godot_tests.sh --require
