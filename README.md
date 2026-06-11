@@ -40,10 +40,32 @@ Adding a brand-new terrain type is: add its art to
 Red units can't be controlled by the player and block movement. Combat
 comes later.
 
+## Running tests
+
+Unit tests use [GUT](https://github.com/bitwes/Gut) (vendored at `addons/gut/`)
+and live in `test/unit/`. Point the tooling at your Godot binary and run them:
+
+```sh
+export GODOT_BIN="/Applications/Godot.app/Contents/MacOS/Godot"   # your install
+./tools/run_godot_tests.sh
+```
+
+The suite also runs automatically:
+
+- **Before every push** — install the git hook once per clone with
+  `./tools/setup-hooks.sh` (installs [lefthook](https://lefthook.dev) if needed,
+  then `lefthook install`).
+- **On every pull request and push to `main`** — via GitHub Actions
+  (`.github/workflows/tests.yml`).
+
+> Always update the tests when you change anything under `scripts/`. See
+> [AGENTS.md](AGENTS.md) for the project's conventions and architecture.
+
 ## Running headless checks
 
-The Godot binary (Steam install):
+Smoke-run the game headless (replace the path with your Godot install, or use
+`$GODOT_BIN`):
 
-```
-"/Users/felicity/Library/Application Support/Steam/steamapps/common/Godot Engine/Godot.app/Contents/MacOS/Godot" --headless --path . --quit-after 10
+```sh
+"$GODOT_BIN" --headless --path . --quit-after 10
 ```
