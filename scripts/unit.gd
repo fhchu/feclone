@@ -36,11 +36,29 @@ var team : String = "blue":
     set(value):
         team = value
         _refresh_sprite()
+        queue_redraw()  # health bar fill colour follows the team
 
 @export_range(1, 10) var move_range : int = 3
 
+@export_range(1, 99) var max_hp : int = 2:
+    set(value):
+        max_hp = value
+        hp = value  # editor shows a full bar; runtime starts at full health
+        queue_redraw()
+
 # ── Runtime state ──────────────────────────────────────────────────────────────
 var cell : Vector2i = Vector2i(-1, -1)   # assigned by main.gd on registration
+var hp   : int      = 2                  # kept in sync by the max_hp setter
+
+# ── Health bar ─────────────────────────────────────────────────────────────────
+const BAR_SIZE     : Vector2 = Vector2(44, 5)
+const BAR_OFFSET_Y : float   = 24.0  # below the sprite, inside the tile
+const BAR_BORDER   : Color   = Color(0.0, 0.0, 0.0, 0.8)
+const BAR_MISSING  : Color   = Color(0.22, 0.22, 0.25)  # dark grey
+const BAR_FILL     : Dictionary = {
+    "blue": Color(0.25, 0.55, 1.0),
+    "red" : Color(0.95, 0.25, 0.3),
+}
 
 # ── Drag state ─────────────────────────────────────────────────────────────────
 const DRAG_THRESHOLD : float = 6.0  # pixels of mouse travel before a press counts as a drag
@@ -83,6 +101,16 @@ func _refresh_sprite() -> void:
         SPRITE_SIZE
     )
 
+## Draws the health bar under the sprite: dark grey backing for missing
+## health, team-coloured fill for the rest.
+func _draw() -> void:
+    var top_left : Vector2 = Vector2(-BAR_SIZE.x / 2.0, BAR_OFFSET_Y)
+    draw_rect(Rect2(top_left - Vector2.ONE, BAR_SIZE + Vector2.ONE * 2.0), BAR_BORDER)
+    draw_rect(Rect2(top_left, BAR_SIZE), BAR_MISSING)
+    var fill_width : float = BAR_SIZE.x * hp / float(max_hp)
+    if fill_width > 0.0:
+        draw_rect(Rect2(top_left, Vector2(fill_width, BAR_SIZE.y)), BAR_FILL[team])
+
 func _process(_delta: float) -> void:
     if Engine.is_editor_hint() or not _is_dragging:
         return
@@ -92,10 +120,11 @@ func _process(_delta: float) -> void:
 # ── Input ──────────────────────────────────────────────────────────────────────
 
 func _on_input_event(_viewport, event: InputEvent, _shape_idx: int) -> void:
+    # Physics picking runs AFTER main.gd's _unhandled_input sees the same
+    # press — main always decides first whether the press acts on the
+    # current selection; this only starts a drag on whatever remains.
     if event is InputEventMouseButton and \
        event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-        # Claim the press so it doesn't also reach main.gd's _unhandled_input.
-        get_viewport().set_input_as_handled()
         _start_drag(get_global_mouse_position())
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -138,6 +167,19 @@ func move_to(new_cell: Vector2i, world_pos: Vector2) -> void:
 func return_to_rest() -> void:
     global_position = _rest_position
     z_index         = 1
+
+## Aborts a drag that main.gd rejected (enemy unit, input locked): the
+## unit stops following the mouse and no drop/click signals will fire.
+func cancel_drag() -> void:
+    _is_dragging    = false
+    global_position = _rest_position
+    z_index         = 1
+
+## Applies damage and refreshes the health bar. Flat subtraction for now;
+## main.gd computes the amount (rpg stats like def/crit plug in there later).
+func take_damage(amount: int) -> void:
+    hp = clampi(hp - amount, 0, max_hp)
+    queue_redraw()
 
 ## Hides the unit without freeing it — used for defeats so undo can bring
 ## it back by restoring its snapshotted properties.

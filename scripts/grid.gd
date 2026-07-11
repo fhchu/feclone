@@ -49,6 +49,13 @@ func show_range(cells: Array, tile: Vector2i = TILE_MOVE) -> void:
         set_cell(cell, SOURCE_ID, tile)
         _range_cells[cell] = tile
 
+## Adds red attack indicators on top of an existing range display.
+## Tracked in _range_cells so hover-restore and clear_range cover them.
+func show_attack_cells(cells: Array) -> void:
+    for cell in cells:
+        set_cell(cell, SOURCE_ID, TILE_ATTACK)
+        _range_cells[cell] = TILE_ATTACK
+
 func clear_range() -> void:
     for cell in _range_cells:
         erase_cell(cell)

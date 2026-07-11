@@ -35,10 +35,20 @@ Adding a brand-new terrain type is: add its art to
      (the sprite updates immediately in the editor)
    - **Team** — blue (player) or red (enemy)
    - **Move Range** — how many movement points it gets per move
+   - **Max Hp** — health (the bar under the unit; blue/red by team,
+     dark grey for missing health)
 4. To move a unit's starting position later, just drag it in the viewport.
 
-Red units can't be controlled by the player and block movement. Combat
-comes later.
+Red units can't be controlled by the player and block movement.
+
+### Combat
+
+When a player unit is selected, enemies it can reach glow red. Dropping
+(or clicking) on a red enemy moves the unit next to it and the two bump
+into each other: the attacker strikes first, then the defender
+counterattacks if it survived. Damage is a flat 1 for now — weapons and
+rpg stats (def/crit/…) come later, as does a weapon-choice menu before
+the strike. Undo reverts a whole engagement, including deaths.
 
 ## Running headless checks
 
