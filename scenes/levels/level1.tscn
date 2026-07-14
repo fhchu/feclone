@@ -44,6 +44,22 @@ border_width_top = 5
 border_width_bottom = 5
 border_color = Color(0.25, 0.55, 1, 1)
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu"]
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
+bg_color = Color(0.08, 0.1, 0.28, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.83, 0.95, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
 [sub_resource type="LabelSettings" id="LabelSettings_banner"]
 font_size = 44
 outline_size = 12
@@ -120,12 +136,29 @@ vertical_alignment = 1
 
 [node name="ActionMenu" type="PanelContainer" parent="UI"]
 visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_menu")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/ActionMenu"]
 layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="AttackButton" type="Button" parent="UI/ActionMenu/VBoxContainer"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Attack"
 
 [node name="WaitButton" type="Button" parent="UI/ActionMenu/VBoxContainer"]
+custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
+theme_override_font_sizes/font_size = 24
 text = "Wait"
 
 [node name="SettingsButton" type="Button" parent="UI"]

@@ -72,10 +72,17 @@ Undo steps back through phase changes too. Enemy actions are collapsed
 into it: one undo rewinds the enemy's response together with the player
 move that provoked it, landing back where it's your input.
 
-Clicking a unit opens a small action menu beside it — **Wait** ends the
-unit's turn without moving (undoable like everything else). Items and
-weapon selection will join that menu later. Selecting another unit, or
-anything that deselects, closes it.
+Turns follow the classic FE rhythm: select a unit, move it, then a
+centered action menu resolves the turn. **Attack** (top option, only
+listed when an enemy is within reach of the new position) switches to
+target selection — red squares mark the enemies in range; click one to
+strike, click anywhere else to return to the menu. **Wait** ends the
+turn on the spot. To wait (or attack) without moving, click the
+selected unit a second time to open the menu in place. A move plus its
+menu action counts as a single undo step. Items joins the menu later.
+
+Dropping a dragged unit directly onto a red-fringe enemy still performs
+the quick move-and-attack without the menu.
 
 ### Enemy AI
 

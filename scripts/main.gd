@@ -23,6 +23,7 @@ extends Node2D
 @onready var phase_banner : PanelContainer = $UI/PhaseBanner
 @onready var banner_label : Label          = $UI/PhaseBanner/BannerLabel
 @onready var action_menu     : PanelContainer = $UI/ActionMenu
+@onready var attack_button   : Button         = $UI/ActionMenu/VBoxContainer/AttackButton
 @onready var wait_button     : Button         = $UI/ActionMenu/VBoxContainer/WaitButton
 @onready var settings_button  : Button         = $UI/SettingsButton
 @onready var settings_panel   : PanelContainer = $UI/SettingsPanel
@@ -60,6 +61,15 @@ var click_selected_unit : Variant    = null  # Area2D node or null (click-to-mov
 var reachable_cells     : Array      = []    # Vector2i cells the unit can end on
 var attack_targets      : Dictionary = {}    # enemy cell → cell to attack from
 
+# ── Pending action state (the FE move-then-menu flow) ──────────────────────────
+# After a unit moves (or elects to act in place), it becomes the pending
+# unit: the action menu owns the turn until Attack or Wait resolves it.
+var _pending_unit           : Variant    = null   # Area2D awaiting a menu decision
+var _pending_snapshot_taken : bool       = false  # its move already pushed an undo snapshot
+var _menu_open              : bool       = false  # action menu is showing (modal)
+var _targeting              : bool       = false  # picking an attack target
+var _targetable             : Dictionary = {}     # enemy cell → true while targeting
+
 # ── Undo stack ─────────────────────────────────────────────────────────────────
 var undo_stack : Array = []
 
@@ -70,6 +80,7 @@ func _ready() -> void:
     _register_placed_units()
     undo_button.disabled = true
     undo_button.pressed.connect(undo_move)
+    attack_button.pressed.connect(_on_attack_pressed)
     wait_button.pressed.connect(_on_wait_pressed)
     settings_button.pressed.connect(_on_settings_pressed)
     settings_panel.get_node("VBoxContainer/RestartButton").pressed.connect(_on_restart_pressed)
@@ -189,7 +200,8 @@ var _phase_changing : bool   = false   # input is ignored while banners play
 ## or the level already decided. Every input handler checks this first.
 func _input_locked() -> bool:
     return _combat_active or _phase_changing or _walking \
-            or _settings_open or _level_over or _game_over
+            or _settings_open or _level_over or _game_over \
+            or _menu_open or _targeting
 
 ## Begins a phase: refreshes every unit (the previous team un-greys, the
 ## new team gets its actions back) and plays the announcement banner.
@@ -280,16 +292,25 @@ func _team_done(team: String) -> bool:
 # emit drag_started/clicked for whatever selection remains.
 
 ## The single decision point shared by both input styles. Attacks if the
-## target holds an enemy in range, moves if the target is reachable.
-## Returns false (leaving selection state untouched) if neither applies.
+## target holds an enemy in range, opens the in-place action menu on the
+## unit's own cell, and moves (then opens the menu) if the target is
+## reachable. Returns false (selection untouched) if none apply.
 func _try_act_at(unit: Area2D, target: Vector2i) -> bool:
     if attack_targets.has(target):
+        # Direct strike: dropping/clicking straight onto an enemy is the
+        # quick path that skips the menu.
         var defender : Area2D   = unit_map[target]
         var launch   : Vector2i = attack_targets[target]
         _deselect()
         _begin_combat(unit, defender, launch)
         return true
-    if target in reachable_cells and target != unit.cell:
+    if target == unit.cell:
+        # Acting in place: no move, menu decides (Wait-without-moving).
+        _deselect()
+        unit.return_to_rest()  # settle a drag dropped back home
+        _open_action_menu(unit, false)
+        return true
+    if target in reachable_cells:
         _deselect()
         _push_undo_snapshot()
         _move_unit_walking(unit, target)
@@ -304,10 +325,8 @@ func _on_drag_started(unit: Area2D) -> void:
         unit.cancel_drag()
         return
 
-    # Clear previous selection's range tiles; the menu stays hidden while
-    # the mouse is down and reopens from the clicked signal on release.
+    # Clear previous selection's range tiles.
     overlay.clear_range()
-    _hide_action_menu()
 
     selected_unit = unit
     var costs : Dictionary = _get_reach_costs(unit)
@@ -349,22 +368,27 @@ func _on_unit_clicked(unit: Area2D) -> void:
     # start), but guard anyway so they can never become the selection.
     if unit.team != PLAYER_TEAM or unit.has_acted:
         return
-    # Second click on the same unit → deselect. (_handle_click_at left
-    # this press for us — see the own-cell carve-out there.)
+    # Second click on the same unit → act in place: the action menu opens
+    # without moving. (_handle_click_at left this press for us — see the
+    # own-cell carve-out there.) Deselecting is done by clicking any
+    # invalid tile instead.
     if unit == click_selected_unit:
-        _deselect()
+        _try_act_at(unit, unit.cell)
         return
-    # First click: drag_started already fired on mouse-down and showed this
-    # unit's range; record the click-selection and open its action menu.
+    # First click: drag_started already fired on mouse-down and showed
+    # this unit's range; just record the click-selection.
     click_selected_unit = unit
-    _show_action_menu(unit)
 
 func _unhandled_input(event: InputEvent) -> void:
     if not (event is InputEventMouseButton and
             event.button_index == MOUSE_BUTTON_LEFT and
             event.pressed):
         return
-    _handle_click_at(overlay.world_to_cell(get_global_mouse_position()))
+    var cell : Vector2i = overlay.world_to_cell(get_global_mouse_position())
+    if _targeting:
+        _handle_target_click(cell)
+        return
+    _handle_click_at(cell)
 
 ## Click-style counterpart of _on_drop_attempted: acts on the selection
 ## with the clicked cell through the same _try_act_at seam.
@@ -372,7 +396,7 @@ func _handle_click_at(cell: Vector2i) -> void:
     if click_selected_unit == null or _input_locked():
         return
     # Press on the selected unit's own cell: leave it for the clicked
-    # signal, which toggles the selection off (or starts a fresh drag).
+    # signal, which opens the in-place action menu (or a drag begins).
     if cell == click_selected_unit.cell:
         return
     var unit : Area2D = click_selected_unit
@@ -385,39 +409,86 @@ func _deselect() -> void:
     reachable_cells     = []
     attack_targets      = {}
     overlay.clear_all()
-    _hide_action_menu()
+    _clear_pending()
 
-# ── Action menu ────────────────────────────────────────────────────────────────
-# A small dropdown that pops up beside the click-selected unit. Wait is
-# its only entry for now; Items and the weapon picker become sibling
-# buttons in the same VBoxContainer later. Menu buttons are Controls, so
-# the GUI consumes their clicks before _unhandled_input or physics
-# picking can deselect the unit underneath.
+# ── Action menu (the FE move-then-menu flow) ──────────────────────────────────
+# Moving a unit no longer ends its turn: the unit walks, then this
+# centered menu owns the turn until Attack or Wait resolves it. Attack
+# only lists when an enemy stands within weapon reach of the unit's
+# current cell; picking it swaps the menu for target selection (red
+# squares on the adjacent enemies — click one to strike, click anything
+# else to come back to the menu). Items joins these buttons later.
+# Menu buttons are Controls, so the GUI consumes their clicks before
+# _unhandled_input or physics picking see them; everything else is
+# locked out by _menu_open/_targeting while the menu owns the turn.
 
-## Places the menu beside the unit, flipping to its left when it would
-## poke past the painted map's right edge (plus margin). Measured off
-## the map rather than the window so any viewport behaves the same.
-## There is no camera, so world coords are canvas coords.
-func _show_action_menu(unit: Area2D) -> void:
-    action_menu.reset_size()
-    var pos : Vector2 = unit.global_position + Vector2(40, -20)
-    var map_right : float = ground.position.x + \
-            ground.get_used_rect().end.x * ground.tile_set.tile_size.x
-    if pos.x + action_menu.size.x > map_right + 36:
-        pos.x = unit.global_position.x - 40 - action_menu.size.x
-    action_menu.position = pos
-    action_menu.visible  = true
+## Opens the menu for a unit that has just moved (snapshot_taken: its
+## move already pushed the undo snapshot) or is acting in place.
+func _open_action_menu(unit: Area2D, snapshot_taken: bool) -> void:
+    _pending_unit           = unit
+    _pending_snapshot_taken = snapshot_taken
+    _menu_open              = true
+    attack_button.visible   = not _adjacent_enemies(unit).is_empty()
+    action_menu.visible     = true
+    # Shrink the panel to its (new) content once the container has
+    # re-sorted — fewer options means a shorter menu, same width.
+    action_menu.call_deferred("reset_size")
 
-func _hide_action_menu() -> void:
-    action_menu.visible = false
+## Resets every pending-action flag and hides the menu UI.
+func _clear_pending() -> void:
+    _pending_unit           = null
+    _pending_snapshot_taken = false
+    _menu_open              = false
+    _targeting              = false
+    _targetable             = {}
+    action_menu.visible     = false
 
-## Wait: end the selected unit's turn without moving.
-func _on_wait_pressed() -> void:
-    if _input_locked() or click_selected_unit == null:
+## Living enemies within weapon reach (melee 1) of the unit's cell.
+func _adjacent_enemies(unit: Area2D) -> Array:
+    var cells : Array = []
+    for dir in ORTHO_DIRS:
+        var n : Vector2i = unit.cell + dir
+        if unit_map.has(n) and unit_map[n].team != unit.team:
+            cells.append(n)
+    return cells
+
+## Attack: hide the menu and mark the enemies in reach for targeting.
+func _on_attack_pressed() -> void:
+    if _pending_unit == null:
         return
-    var unit : Area2D = click_selected_unit
-    _deselect()
-    _push_undo_snapshot()
+    _menu_open          = false
+    action_menu.visible = false
+    _targeting          = true
+    _targetable         = {}
+    for cell in _adjacent_enemies(_pending_unit):
+        _targetable[cell] = true
+    overlay.show_attack_cells(_targetable.keys())
+
+## A click while picking a target: strike a marked enemy; anything else
+## returns to the action menu.
+func _handle_target_click(cell: Vector2i) -> void:
+    var unit          : Area2D = _pending_unit
+    var have_snapshot : bool   = _pending_snapshot_taken
+    if _targetable.has(cell):
+        var defender : Area2D = unit_map[cell]
+        _clear_pending()
+        overlay.clear_all()
+        _begin_combat(unit, defender, unit.cell, not have_snapshot)
+    else:
+        _targeting  = false
+        _targetable = {}
+        overlay.clear_range()
+        _open_action_menu(unit, have_snapshot)
+
+## Wait: end the pending unit's turn where it stands.
+func _on_wait_pressed() -> void:
+    if _pending_unit == null:
+        return
+    var unit          : Area2D = _pending_unit
+    var have_snapshot : bool   = _pending_snapshot_taken
+    _clear_pending()
+    if not have_snapshot:
+        _push_undo_snapshot()
     _finish_action(unit)
 
 # ── Move application ───────────────────────────────────────────────────────────
@@ -471,10 +542,11 @@ func _walk_unit(unit: Area2D, target: Vector2i) -> void:
     _move_unit(unit, target)
     _walking = false
 
-## A plain (non-combat) move: walk there, then the unit's turn is done.
+## A player move: walk there, then the action menu decides the turn —
+## Attack if anything is in reach from the new cell, or Wait.
 func _move_unit_walking(unit: Area2D, target: Vector2i) -> void:
     await _walk_unit(unit, target)
-    _finish_action(unit)
+    _open_action_menu(unit, true)
 
 # ── Combat ─────────────────────────────────────────────────────────────────────
 # A melee engagement: the attacker moves to its launch cell, bumps into the
@@ -496,8 +568,12 @@ signal combat_finished
 func _attack_damage(_attacker, _defender) -> int:
     return 1  # flat subtraction for now
 
-func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i) -> void:
-    _push_undo_snapshot()  # one undo reverts the approach move and the damage
+## push_snapshot is false when the attacker's approach move already
+## pushed one (the menu flow) — move + attack stay a single undo step.
+func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
+        push_snapshot: bool = true) -> void:
+    if push_snapshot:
+        _push_undo_snapshot()  # one undo reverts approach move and damage
     _combat_active = true
 
     # Walk the approach (or just settle home when attacking in place).
