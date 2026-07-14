@@ -15,15 +15,28 @@
 extends Node2D
 
 # ── Scene references ───────────────────────────────────────────────────────────
-@onready var ground      : TileMapLayer = $Ground
-@onready var overlay     : TileMapLayer = $Overlay
-@onready var units_node  : Node2D       = $Units
-@onready var turn_label  : Label        = $UI/TurnLabel
-@onready var undo_button : Button       = $UI/UndoButton
+@onready var ground       : TileMapLayer   = $Ground
+@onready var overlay      : TileMapLayer   = $Overlay
+@onready var units_node   : Node2D         = $Units
+@onready var turn_label   : Label          = $UI/TurnLabel
+@onready var undo_button  : Button         = $UI/UndoButton
+@onready var phase_banner : PanelContainer = $UI/PhaseBanner
+@onready var banner_label : Label          = $UI/PhaseBanner/BannerLabel
 
 const PLAYER_TEAM : String = "blue"
+const ENEMY_TEAM  : String = "red"
 
 const ORTHO_DIRS : Array = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
+
+# ── Pacing ─────────────────────────────────────────────────────────────────────
+## Global animation speed multiplier. Every animated duration in the game
+## (walking, combat bumps, phase banners, enemy pacing) is divided by it,
+## so raising it to 1.5–2.0 fast-forwards the whole game uniformly.
+@export_range(0.5, 3.0, 0.1) var animation_speed : float = 1.0
+
+## Scales a base duration by the global animation speed.
+func _anim(seconds: float) -> float:
+    return seconds / animation_speed
 
 # ── Game state ─────────────────────────────────────────────────────────────────
 # Maps Vector2i cell → Area2D unit node. Always the source of truth for
@@ -46,7 +59,7 @@ func _ready() -> void:
     _register_placed_units()
     undo_button.disabled = true
     undo_button.pressed.connect(undo_move)
-    turn_label.text = "Blue phase"
+    _start_phase(PLAYER_TEAM)
 
 ## Snaps every designer-placed unit under Units to its nearest cell and
 ## wires up its input signals.
@@ -121,6 +134,103 @@ func _get_attack_targets(unit, costs: Dictionary) -> Dictionary:
             targets[enemy_cell] = best
     return targets
 
+# ── Phases ─────────────────────────────────────────────────────────────────────
+# Alternating team phases, Fire Emblem style: every unit on the active
+# team acts once (greying out as it does), then the phase flips. The
+# banner announces each phase and input stays locked while it plays —
+# for the whole enemy phase, in fact, since the player never acts in it.
+# The enemy phase runs each red unit through its EnemyAI strategies
+# (scripts/enemy_ai.gd) one at a time, then hands back to the player.
+
+const BANNER_FADE_IN  : float = 0.2
+const BANNER_HOLD     : float = 1.0
+const BANNER_FADE_OUT : float = 0.3
+const BANNER_COLORS   : Dictionary = {
+    "blue": Color(0.25, 0.55, 1.0),
+    "red" : Color(0.95, 0.25, 0.3),
+}
+
+var current_team    : String = PLAYER_TEAM
+var _phase_changing : bool   = false   # input is ignored while banners play
+
+## True whenever the player may not act: combat playing out, a unit
+## walking, or a phase banner/hand-off in progress. Every input handler
+## checks this first.
+func _input_locked() -> bool:
+    return _combat_active or _phase_changing or _walking
+
+## Begins a phase: refreshes every unit (the previous team un-greys, the
+## new team gets its actions back) and plays the announcement banner.
+func _start_phase(team: String) -> void:
+    current_team    = team
+    _phase_changing = true
+    _deselect()
+    for unit in units_node.get_children():
+        unit.has_acted = false
+    var title : String = "Player Phase" if team == PLAYER_TEAM else "Enemy Phase"
+    turn_label.text = title
+    _show_banner(title, BANNER_COLORS[team])
+
+func _show_banner(title: String, team_color: Color) -> void:
+    var style : StyleBoxFlat = phase_banner.get_theme_stylebox("panel")
+    style.border_color = team_color
+    # The banner background is fully transparent; the team-coloured text
+    # outline is what keeps the white title readable over the map.
+    banner_label.label_settings.outline_color = team_color
+    banner_label.text = title
+    phase_banner.modulate.a = 0.0
+    phase_banner.visible    = true
+    var tw : Tween = create_tween()
+    tw.tween_property(phase_banner, "modulate:a", 1.0, _anim(BANNER_FADE_IN))
+    tw.tween_interval(_anim(BANNER_HOLD))
+    tw.tween_property(phase_banner, "modulate:a", 0.0, _anim(BANNER_FADE_OUT))
+    tw.tween_callback(func() -> void: phase_banner.visible = false)
+    tw.tween_callback(_on_banner_finished)
+
+func _on_banner_finished() -> void:
+    if current_team == PLAYER_TEAM:
+        _phase_changing = false  # hand control to the player
+    else:
+        _run_enemy_phase()
+
+const ENEMY_ACT_DELAY : float = 0.35  # beat between enemy actions
+
+## Runs the enemy phase one unit at a time. Each red unit consults its
+## EnemyAI strategies and either engages (through the same combat path
+## as player attacks) or holds. The runner owns the phase hand-off —
+## _finish_action never flips the phase while the enemy is acting.
+func _run_enemy_phase() -> void:
+    for unit in units_node.get_children():
+        if unit.team != current_team or not unit.visible:
+            continue
+        await get_tree().create_timer(_anim(ENEMY_ACT_DELAY)).timeout
+        if not unit.visible:
+            continue  # defeated by a counterattack earlier this phase
+        var action : Dictionary = EnemyAI.decide(unit, self)
+        if action["type"] == "attack":
+            _begin_combat(unit, action["target"], action["launch"])
+            await combat_finished
+        else:
+            unit.has_acted = true  # holds position; greys until next phase
+    _start_phase(PLAYER_TEAM)
+
+## Marks a completed action. Called from the _try_act_at move branch and
+## from _end_combat, so both action kinds end a unit's turn identically.
+## Future game-over checks (all player units dead / boss slain) evaluate
+## here, before the phase is allowed to flip.
+func _finish_action(unit: Area2D) -> void:
+    unit.has_acted = true
+    # Only the player phase auto-flips; _run_enemy_phase sequences its own.
+    if current_team == PLAYER_TEAM and _team_done(current_team):
+        _start_phase(ENEMY_TEAM)
+
+## A team is done when none of its living units still has an action.
+func _team_done(team: String) -> bool:
+    for unit in units_node.get_children():
+        if unit.team == team and unit.visible and not unit.has_acted:
+            return false
+    return true
+
 # ── Player input ───────────────────────────────────────────────────────────────
 # Two interchangeable input styles — drag-and-drop and click-then-click —
 # kept in lockstep BY CONTRACT: every destination decision (attack, move,
@@ -146,15 +256,15 @@ func _try_act_at(unit: Area2D, target: Vector2i) -> bool:
     if target in reachable_cells and target != unit.cell:
         _deselect()
         _push_undo_snapshot()
-        _move_unit(unit, target)
+        _move_unit_walking(unit, target)
         return true
     return false
 
 # ── Drag-and-drop input ────────────────────────────────────────────────────────
 
 func _on_drag_started(unit: Area2D) -> void:
-    # Enemy units aren't player-controlled, and nothing drags mid-combat.
-    if _combat_active or unit.team != PLAYER_TEAM:
+    # Only fresh player units drag, and only while input is live.
+    if _input_locked() or unit.team != PLAYER_TEAM or unit.has_acted:
         unit.cancel_drag()
         return
 
@@ -193,11 +303,11 @@ func _on_drop_attempted(unit: Area2D, world_pos: Vector2) -> void:
 # ── Click-to-move input ────────────────────────────────────────────────────────
 
 func _on_unit_clicked(unit: Area2D) -> void:
-    if _combat_active:
+    if _input_locked():
         return
-    # Enemy units never emit clicked (their drags are cancelled at start),
-    # but guard anyway so a red unit can never become the selection.
-    if unit.team != PLAYER_TEAM:
+    # Rejected units never emit clicked (their drags are cancelled at
+    # start), but guard anyway so they can never become the selection.
+    if unit.team != PLAYER_TEAM or unit.has_acted:
         return
     # Second click on the same unit → deselect. (_handle_click_at left
     # this press for us — see the own-cell carve-out there.)
@@ -218,7 +328,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Click-style counterpart of _on_drop_attempted: acts on the selection
 ## with the clicked cell through the same _try_act_at seam.
 func _handle_click_at(cell: Vector2i) -> void:
-    if click_selected_unit == null or _combat_active:
+    if click_selected_unit == null or _input_locked():
         return
     # Press on the selected unit's own cell: leave it for the clicked
     # signal, which toggles the selection off (or starts a fresh drag).
@@ -237,10 +347,59 @@ func _deselect() -> void:
 
 # ── Move application ───────────────────────────────────────────────────────────
 
+const WALK_TIME_PER_TILE : float = 0.1  # seconds per step at 1x speed
+
+var _walking : bool = false   # input is ignored while a unit walks
+
+## Commits a move instantly: updates unit_map, cell, and rest position.
 func _move_unit(unit: Area2D, to_cell: Vector2i) -> void:
     unit_map.erase(unit.cell)
     unit.move_to(to_cell, overlay.cell_center_world(to_cell))
     unit_map[to_cell] = unit
+
+## Reconstructs the cheapest path from the unit to target (start cell
+## included) by descending the BFS cost field: each step back goes to a
+## neighbour whose cost is exactly this cell's cost minus its terrain
+## cost — such a neighbour always exists on an optimal field.
+func _build_path(unit: Area2D, target: Vector2i) -> Array:
+    var costs : Dictionary = _get_reach_costs(unit)
+    var path  : Array      = [target]
+    var cur   : Vector2i   = target
+    while cur != unit.cell:
+        var stepped : bool = false
+        for dir in ORTHO_DIRS:
+            var prev : Vector2i = cur + dir
+            if costs.has(prev) and costs[prev] == costs[cur] - _terrain_cost(cur):
+                cur     = prev
+                stepped = true
+                break
+        if not stepped:
+            push_warning("No path back from %s for %s" % [target, unit.name])
+            break
+        path.push_front(cur)
+    return path
+
+## Walks the unit tile-by-tile to target, then commits the move. Input
+## stays locked for the duration. Awaitable; safe when target is the
+## unit's own cell (no tween — it just settles home, e.g. after a drag).
+func _walk_unit(unit: Area2D, target: Vector2i) -> void:
+    var path : Array = _build_path(unit, target)
+    _walking = true
+    # A dragged unit hangs at its drop point; walking starts from home.
+    unit.global_position = overlay.cell_center_world(unit.cell)
+    if path.size() > 1:
+        var tw : Tween = create_tween()
+        for i in range(1, path.size()):
+            tw.tween_property(unit, "global_position",
+                    overlay.cell_center_world(path[i]), _anim(WALK_TIME_PER_TILE))
+        await tw.finished
+    _move_unit(unit, target)
+    _walking = false
+
+## A plain (non-combat) move: walk there, then the unit's turn is done.
+func _move_unit_walking(unit: Area2D, target: Vector2i) -> void:
+    await _walk_unit(unit, target)
+    _finish_action(unit)
 
 # ── Combat ─────────────────────────────────────────────────────────────────────
 # A melee engagement: the attacker moves to its launch cell, bumps into the
@@ -256,18 +415,18 @@ const BUMP_DISTANCE : float = 0.45  # fraction of the way into the target's cell
 
 var _combat_active : bool = false   # input is ignored while the bumps play
 
+## Fired when an engagement fully resolves; _run_enemy_phase awaits it.
+signal combat_finished
+
 func _attack_damage(_attacker, _defender) -> int:
     return 1  # flat subtraction for now
 
 func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i) -> void:
     _push_undo_snapshot()  # one undo reverts the approach move and the damage
-
-    if launch_cell != attacker.cell:
-        _move_unit(attacker, launch_cell)
-    else:
-        attacker.return_to_rest()  # settle a mid-drag drop before the bump
-
     _combat_active = true
+
+    # Walk the approach (or just settle home when attacking in place).
+    await _walk_unit(attacker, launch_cell)
 
     var atk_home : Vector2 = overlay.cell_center_world(attacker.cell)
     var def_home : Vector2 = overlay.cell_center_world(defender.cell)
@@ -277,18 +436,18 @@ func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i) ->
     var tw : Tween = create_tween()
     tw.tween_callback(func() -> void: attacker.z_index = 10)
     tw.tween_property(attacker, "global_position",
-            atk_home.lerp(def_home, BUMP_DISTANCE), BUMP_TIME)
+            atk_home.lerp(def_home, BUMP_DISTANCE), _anim(BUMP_TIME))
     tw.tween_callback(func() -> void: defender.take_damage(atk_dmg))
-    tw.tween_property(attacker, "global_position", atk_home, BUMP_TIME)
+    tw.tween_property(attacker, "global_position", atk_home, _anim(BUMP_TIME))
     tw.tween_callback(func() -> void: attacker.z_index = 1)
 
     if counters:
         var def_dmg : int = _attack_damage(defender, attacker)
         tw.tween_callback(func() -> void: defender.z_index = 10)
         tw.tween_property(defender, "global_position",
-                def_home.lerp(atk_home, BUMP_DISTANCE), BUMP_TIME)
+                def_home.lerp(atk_home, BUMP_DISTANCE), _anim(BUMP_TIME))
         tw.tween_callback(func() -> void: attacker.take_damage(def_dmg))
-        tw.tween_property(defender, "global_position", def_home, BUMP_TIME)
+        tw.tween_property(defender, "global_position", def_home, _anim(BUMP_TIME))
         tw.tween_callback(func() -> void: defender.z_index = 1)
 
     tw.tween_callback(_end_combat.bind(attacker, defender))
@@ -299,6 +458,8 @@ func _end_combat(attacker: Area2D, defender: Area2D) -> void:
             unit_map.erase(unit.cell)
             unit.defeat()
     _combat_active = false
+    _finish_action(attacker)
+    combat_finished.emit()
 
 # ── Undo ───────────────────────────────────────────────────────────────────────
 
@@ -314,19 +475,26 @@ func _push_undo_snapshot() -> void:
             "visible"  : unit.visible,
             "pickable" : unit.input_pickable,
             "hp"       : unit.hp,
+            "acted"    : unit.has_acted,
         }
-    undo_stack.append({"unit_states": states})
+    undo_stack.append({"unit_states": states, "team": current_team})
     undo_button.disabled = false
 
-## Called by the Undo button.
+## Called by the Undo button. Restores phase state too, so undoing the
+## action that ended a phase steps back into that phase. Enemy actions
+## are deterministic reactions, so snapshots taken during the enemy
+## phase collapse into the player action that provoked them: one undo
+## lands back on a state where it's the player's input.
 func undo_move() -> void:
-    if _combat_active:
+    if _input_locked():
         return
     _deselect()
     if undo_stack.is_empty():
         return
 
-    var snap   : Dictionary = undo_stack.pop_back()
+    var snap : Dictionary = undo_stack.pop_back()
+    while snap["team"] != PLAYER_TEAM and not undo_stack.is_empty():
+        snap = undo_stack.pop_back()
     var states : Dictionary = snap["unit_states"]
     unit_map.clear()
     for unit in states:
@@ -337,8 +505,11 @@ func undo_move() -> void:
         unit.visible         = s["visible"]
         unit.input_pickable  = s["pickable"]
         unit.hp              = s["hp"]
+        unit.has_acted       = s["acted"]
         unit.queue_redraw()
         if unit.visible:
             unit_map[unit.cell] = unit
 
+    current_team    = snap["team"]
+    turn_label.text = "Player Phase" if current_team == PLAYER_TEAM else "Enemy Phase"
     undo_button.disabled = undo_stack.is_empty()

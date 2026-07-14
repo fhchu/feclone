@@ -2,6 +2,11 @@
 
 [ext_resource type="Script" path="res://scripts/unit.gd" id="1_unit"]
 [ext_resource type="Texture2D" uid="uid://bgd1qyck4i13w" path="res://assets/pieces.png" id="2_sheet"]
+[ext_resource type="Shader" path="res://assets/unit_tint.gdshader" id="3_tint"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_tint"]
+resource_local_to_scene = true
+shader = ExtResource("3_tint")
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_unit"]
 size = Vector2(64, 64)
@@ -10,6 +15,7 @@ size = Vector2(64, 64)
 script = ExtResource("1_unit")
 
 [node name="Sprite2D" type="Sprite2D" parent="."]
+material = SubResource("ShaderMaterial_tint")
 texture = ExtResource("2_sheet")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]

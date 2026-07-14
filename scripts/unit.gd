@@ -46,9 +46,28 @@ var team : String = "blue":
         hp = value  # editor shows a full bar; runtime starts at full health
         queue_redraw()
 
+# Which EnemyAI strategies drive this unit while it's on the enemy team
+# (ignored for player units) — see scripts/enemy_ai.gd. The dropdowns
+# grow as new behaviours land (thieves, bosses, reinforcements…).
+@export_group("Enemy AI")
+@export_enum("guard") var ai_movement : String = "guard"
+@export_enum("lowest_hp") var ai_targeting : String = "lowest_hp"
+@export_group("")
+
 # ── Runtime state ──────────────────────────────────────────────────────────────
 var cell : Vector2i = Vector2i(-1, -1)   # assigned by main.gd on registration
 var hp   : int      = 2                  # kept in sync by the max_hp setter
+
+## True once the unit has taken its action this phase; main.gd resets it
+## at phase start. The sprite greys out while set.
+var has_acted : bool = false:
+    set(value):
+        has_acted = value
+        _apply_acted_tint()
+
+# Shader uniforms while has_acted (see assets/unit_tint.gdshader).
+const ACTED_SATURATION : float = 0.15
+const ACTED_BRIGHTNESS : float = 0.7
 
 # ── Health bar ─────────────────────────────────────────────────────────────────
 const BAR_SIZE     : Vector2 = Vector2(44, 5)
@@ -82,10 +101,20 @@ signal clicked(unit: Area2D)
 
 func _ready() -> void:
     _refresh_sprite()
+    _apply_acted_tint()
     if Engine.is_editor_hint():
         return
     input_pickable = true
     connect("input_event", _on_input_event)
+
+## Greys the sprite out while the unit has acted. The material is
+## resource_local_to_scene, so each unit tints independently.
+func _apply_acted_tint() -> void:
+    if not is_node_ready():
+        return
+    var mat : ShaderMaterial = $Sprite2D.material
+    mat.set_shader_parameter("saturation", ACTED_SATURATION if has_acted else 1.0)
+    mat.set_shader_parameter("brightness", ACTED_BRIGHTNESS if has_acted else 1.0)
 
 ## Points the sprite region at the right pieces.png tile for class + team.
 ## Runs in the editor too (exports call it from their setters).

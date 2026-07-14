@@ -41,6 +41,40 @@ Adding a brand-new terrain type is: add its art to
 
 Red units can't be controlled by the player and block movement.
 
+### Phases
+
+Play alternates between **Player Phase** (blue banner) and **Enemy
+Phase** (red banner). Each unit acts once per phase — moving or
+attacking ends its turn and greys it out until the next phase. When
+every unit on a team has acted, the phase flips automatically. During
+the enemy phase each red unit acts on its own (see Enemy AI below).
+
+Undo steps back through phase changes too. Enemy actions are collapsed
+into it: one undo rewinds the enemy's response together with the player
+move that provoked it, landing back where it's your input.
+
+### Enemy AI
+
+Each red unit picks its behaviour from two dropdowns in the Inspector
+(**Enemy AI** group), one per half of the decision:
+
+- **Ai Movement** — when the unit commits to moving.
+  `guard` (default): holds position until a player unit enters its
+  attack range (movement + weapon reach).
+- **Ai Targeting** — who it attacks once engaged.
+  `lowest_hp` (default): the player unit in reach with the least health.
+
+More behaviours (thieves fleeing with loot, bosses holding thrones,
+reinforcements rushing the front) will appear in these dropdowns as
+they're implemented — mixing the two halves per unit is the point.
+
+### Pacing
+
+Units walk their movement paths tile-by-tile (player and enemy alike).
+To speed the whole game up, select the **Main** node and raise
+**Animation Speed** in the Inspector — 1.5 or 2.0 fast-forwards walking,
+combat, banners, and enemy pacing uniformly. It ships at 1.0.
+
 ### Combat
 
 When a player unit is selected, enemies it can reach glow red. Dropping
