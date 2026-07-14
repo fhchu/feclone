@@ -390,9 +390,12 @@ func _on_drag_started(unit: Area2D) -> void:
         unit.cancel_drag()
         return
 
-    # Clear previous selection's range tiles.
-    overlay.clear_range()
+    _select_unit(unit)
 
+## Makes a unit the live selection and shows its ranges — the state a
+## first click (or mouse-down) puts a unit in.
+func _select_unit(unit: Area2D) -> void:
+    overlay.clear_range()
     selected_unit = unit
     _refresh_unit_info()  # selection hides the hover card
     var costs : Dictionary = _get_reach_costs(unit)
@@ -451,6 +454,11 @@ func _unhandled_input(event: InputEvent) -> void:
             event.pressed):
         return
     var cell : Vector2i = overlay.world_to_cell(get_global_mouse_position())
+    if _menu_open:
+        # Any press outside the menu panel (its buttons and backing
+        # consume their own clicks) aborts the pending action.
+        _cancel_action_menu()
+        return
     if _targeting:
         _handle_target_click(cell)
         return
@@ -524,9 +532,11 @@ func _refresh_unit_info() -> void:
 # current cell; picking it swaps the menu for target selection (red
 # squares on the adjacent enemies — click one to strike, click anything
 # else to come back to the menu). Items joins these buttons later.
-# Menu buttons are Controls, so the GUI consumes their clicks before
-# _unhandled_input or physics picking see them; everything else is
-# locked out by _menu_open/_targeting while the menu owns the turn.
+# Clicking anywhere OUTSIDE the open menu cancels the pending action:
+# the approach move is reverted and the unit returns to being merely
+# selected (the FE B-button). Menu buttons are Controls, so the GUI
+# consumes their clicks before _unhandled_input or physics picking see
+# them; unit drags stay locked out while the menu owns the turn.
 
 ## Opens the menu for a unit that has just moved (snapshot_taken: its
 ## move already pushed the undo snapshot) or is acting in place.
@@ -585,6 +595,22 @@ func _handle_target_click(cell: Vector2i) -> void:
         _targetable = {}
         overlay.clear_range()
         _open_action_menu(unit, have_snapshot)
+
+## A click outside the open action menu: abort the pending action, snap
+## the unit back to where its turn started (reverting the approach move
+## by popping its own undo snapshot), and leave it merely selected — as
+## if it had just been clicked once.
+func _cancel_action_menu() -> void:
+    if _pending_unit == null:
+        return
+    var unit  : Area2D = _pending_unit
+    var moved : bool   = _pending_snapshot_taken
+    _clear_pending()
+    if moved:
+        _restore_snapshot(undo_stack.pop_back())
+        undo_button.disabled = undo_stack.is_empty()
+    _select_unit(unit)
+    click_selected_unit = unit
 
 ## Wait: end the pending unit's turn where it stands.
 func _on_wait_pressed() -> void:
@@ -834,6 +860,12 @@ func undo_move() -> void:
     var snap : Dictionary = undo_stack.pop_back()
     while snap["team"] != PLAYER_TEAM and not undo_stack.is_empty():
         snap = undo_stack.pop_back()
+    _restore_snapshot(snap)
+    undo_button.disabled = undo_stack.is_empty()
+
+## Restores a snapshot's unit states and phase bookkeeping. Shared by
+## undo and the action-menu cancel (which reverts one approach move).
+func _restore_snapshot(snap: Dictionary) -> void:
     var states : Dictionary = snap["unit_states"]
     unit_map.clear()
     for unit in states:
@@ -851,4 +883,3 @@ func undo_move() -> void:
 
     current_team    = snap["team"]
     turn_label.text = "Player Phase" if current_team == PLAYER_TEAM else "Enemy Phase"
-    undo_button.disabled = undo_stack.is_empty()

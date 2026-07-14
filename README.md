@@ -84,9 +84,12 @@ centered action menu resolves the turn. **Attack** (top option, only
 listed when an enemy is within reach of the new position) switches to
 target selection — red squares mark the enemies in range; click one to
 strike, click anywhere else to return to the menu. **Wait** ends the
-turn on the spot. To wait (or attack) without moving, click the
-selected unit a second time to open the menu in place. A move plus its
-menu action counts as a single undo step. Items joins the menu later.
+turn on the spot. Clicking anywhere outside the menu cancels the whole
+action — the unit snaps back to where it started, still selected, as
+if it had only been clicked. To wait (or attack) without moving, click
+the selected unit a second time to open the menu in place. A move plus
+its menu action counts as a single undo step. Items joins the menu
+later.
 
 Dropping a dragged unit directly onto a red-fringe enemy still performs
 the quick move-and-attack without the menu.
