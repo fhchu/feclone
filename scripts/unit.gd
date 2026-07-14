@@ -101,6 +101,11 @@ signal drop_attempted(unit: Area2D, world_pos: Vector2)
 ## Fired when the press is released with under DRAG_THRESHOLD of movement.
 signal clicked(unit: Area2D)
 
+## Name shown in the hover info card. Unique characters ("Lyon",
+## "Cormag") will override this with a real name property later.
+func display_name() -> String:
+    return unit_class.capitalize()
+
 # ── Lifecycle ──────────────────────────────────────────────────────────────────
 
 func _ready() -> void:

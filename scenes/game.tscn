@@ -36,6 +36,22 @@ font_size = 44
 outline_size = 12
 outline_color = Color(0.25, 0.55, 1, 1)
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_info"]
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 10.0
+content_margin_bottom = 8.0
+bg_color = Color(0.07, 0.07, 0.09, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.55, 0.6, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
 [node name="Game" type="Node2D"]
 script = ExtResource("1_main")
 
@@ -67,6 +83,52 @@ offset_right = 8.0
 grow_vertical = 0
 disabled = true
 text = "Undo"
+
+[node name="UnitInfoPanel" type="PanelContainer" parent="UI"]
+visible = false
+offset_left = 8.0
+offset_top = 8.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_info")
+
+[node name="HBoxContainer" type="HBoxContainer" parent="UI/UnitInfoPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Portrait" type="TextureRect" parent="UI/UnitInfoPanel/HBoxContainer"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Info" type="VBoxContainer" parent="UI/UnitInfoPanel/HBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 3
+
+[node name="NameLabel" type="Label" parent="UI/UnitInfoPanel/HBoxContainer/Info"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Lord"
+
+[node name="HpLabel" type="Label" parent="UI/UnitInfoPanel/HBoxContainer/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.82, 0.85, 1)
+theme_override_font_sizes/font_size = 14
+text = "2 / 2"
+
+[node name="HpBarBack" type="ColorRect" parent="UI/UnitInfoPanel/HBoxContainer/Info"]
+custom_minimum_size = Vector2(120, 8)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.22, 0.22, 0.24, 1)
+
+[node name="HpBarFill" type="ColorRect" parent="UI/UnitInfoPanel/HBoxContainer/Info/HpBarBack"]
+offset_right = 120.0
+offset_bottom = 8.0
+mouse_filter = 2
+color = Color(0.92, 0.92, 0.94, 1)
 
 [node name="PhaseBanner" type="PanelContainer" parent="UI"]
 visible = false

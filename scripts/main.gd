@@ -30,6 +30,13 @@ extends Node2D
 @onready var settings_button  : Button         = $UI/SettingsButton
 @onready var settings_panel   : PanelContainer = $UI/SettingsPanel
 @onready var game_over_screen : Control        = $UI/GameOverScreen
+@onready var info_panel       : PanelContainer = $UI/UnitInfoPanel
+@onready var info_portrait    : TextureRect    = $UI/UnitInfoPanel/HBoxContainer/Portrait
+@onready var info_name        : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/NameLabel
+@onready var info_hp          : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/HpLabel
+@onready var info_bar_fill    : ColorRect      = $UI/UnitInfoPanel/HBoxContainer/Info/HpBarBack/HpBarFill
+
+const INFO_BAR_WIDTH : float = 120.0
 
 # ── Current level ──────────────────────────────────────────────────────────────
 # Set by _load_level(); ground and units_node point into the level
@@ -86,6 +93,7 @@ var undo_stack : Array = []
 
 func _ready() -> void:
     overlay.overlay_alpha = 0.5
+    info_portrait.texture = AtlasTexture.new()
     undo_button.pressed.connect(undo_move)
     attack_button.pressed.connect(_on_attack_pressed)
     wait_button.pressed.connect(_on_wait_pressed)
@@ -126,6 +134,7 @@ func _load_level(path: String) -> void:
     settings_panel.visible   = false
     game_over_screen.visible = false
 
+    _hovered_unit = null  # the hovered node is about to be freed
     current_level_path = path
     level = load(path).instantiate()
     level_holder.add_child(level)
@@ -152,6 +161,8 @@ func _register_placed_units() -> void:
         unit.connect("drag_moved",     _on_drag_moved)
         unit.connect("drop_attempted", _on_drop_attempted)
         unit.connect("clicked",        _on_unit_clicked)
+        unit.mouse_entered.connect(_on_unit_mouse_entered.bind(unit))
+        unit.mouse_exited.connect(_on_unit_mouse_exited.bind(unit))
         unit_map[cell] = unit
 
 # ── Map queries ────────────────────────────────────────────────────────────────
@@ -383,6 +394,7 @@ func _on_drag_started(unit: Area2D) -> void:
     overlay.clear_range()
 
     selected_unit = unit
+    _refresh_unit_info()  # selection hides the hover card
     var costs : Dictionary = _get_reach_costs(unit)
     reachable_cells = costs.keys()
     attack_targets  = _get_attack_targets(unit, costs)
@@ -464,6 +476,46 @@ func _deselect() -> void:
     attack_targets      = {}
     overlay.clear_all()
     _clear_pending()
+    _refresh_unit_info()  # the hover card may come back once nothing is selected
+
+# ── Unit info card (hover) ─────────────────────────────────────────────────────
+# A neutral greyscale card in the top-left showing the hovered unit's
+# portrait (sprite for now), name, and hp. Shown for both teams, only
+# in the idle state: it disappears the moment a unit is selected or any
+# animation/menu owns the screen.
+
+var _hovered_unit : Variant = null   # Area2D under the mouse, or null
+
+func _on_unit_mouse_entered(unit: Area2D) -> void:
+    _hovered_unit = unit
+    _refresh_unit_info()
+
+func _on_unit_mouse_exited(unit: Area2D) -> void:
+    if _hovered_unit == unit:
+        _hovered_unit = null
+        _refresh_unit_info()
+
+## Recomputes the card's visibility and contents. Called from the hover
+## signals and from the selection/state transitions that should hide or
+## restore it.
+func _refresh_unit_info() -> void:
+    var showable : bool = _hovered_unit != null \
+            and is_instance_valid(_hovered_unit) and _hovered_unit.visible \
+            and selected_unit == null and click_selected_unit == null \
+            and not _input_locked()
+    if not showable:
+        info_panel.visible = false
+        return
+    var sprite : Sprite2D = _hovered_unit.get_node("Sprite2D")
+    var portrait : AtlasTexture = info_portrait.texture
+    portrait.atlas  = sprite.texture      # portrait art replaces this later
+    portrait.region = sprite.region_rect
+    info_name.text = _hovered_unit.display_name()
+    info_hp.text   = "%d / %d" % [_hovered_unit.hp, _hovered_unit.max_hp]
+    info_bar_fill.size = Vector2(
+            INFO_BAR_WIDTH * _hovered_unit.hp / float(_hovered_unit.max_hp),
+            info_bar_fill.size.y)
+    info_panel.visible = true
 
 # ── Action menu (the FE move-then-menu flow) ──────────────────────────────────
 # Moving a unit no longer ends its turn: the unit walks, then this

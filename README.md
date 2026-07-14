@@ -114,6 +114,14 @@ To speed the whole game up, select the **Main** node and raise
 **Animation Speed** in the Inspector — 1.5 or 2.0 fast-forwards walking,
 combat, banners, and enemy pacing uniformly. It ships at 1.0.
 
+### Unit info
+
+Hovering any unit (either team) shows a neutral greyscale card in the
+top-left corner: portrait (the map sprite until real portraits exist),
+name (class name for now; unique characters get real names later), and
+current/max hp with a bar. It hides while a unit is selected or
+anything else owns the screen.
+
 ### Combat
 
 When a player unit is selected, its whole strike range beyond the blue
