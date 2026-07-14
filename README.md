@@ -75,9 +75,13 @@ attacking ends its turn and greys it out until the next phase. When
 every unit on a team has acted, the phase flips automatically. During
 the enemy phase each red unit acts on its own (see Enemy AI below).
 
-Undo steps back through phase changes too. Enemy actions are collapsed
-into it: one undo rewinds the enemy's response together with the player
-move that provoked it, landing back where it's your input.
+The **Undo** button opens the history browser: a left-side list of
+every player action ("Cavalier attacks Knight", "Lord waits") with a
+"— Turn N —" marker at each round, back to the start of the map.
+Clicking an entry previews that board state; **Confirm** jumps there
+for real (discarding what came after), **Cancel** returns to the
+present. Enemy responses belong to the player action that provoked
+them and are never separate entries.
 
 Turns follow the classic FE rhythm: select a unit, move it, then a
 centered action menu resolves the turn. **Attack** (top option, only

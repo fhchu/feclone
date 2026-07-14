@@ -94,15 +94,24 @@ var _targeting              : bool       = false  # picking an attack target
 var _targetable             : Dictionary = {}     # enemy cell → true while targeting
 var _forecast_target        : Variant    = null   # cell whose forecast is up; next click commits
 
-# ── Undo stack ─────────────────────────────────────────────────────────────────
-var undo_stack : Array = []
+# ── Undo stack / history ───────────────────────────────────────────────────────
+# Full-state snapshots, one per action, each labelled ("Lord attacks
+# Knight") plus one "Turn N" marker at every player-phase start — the
+# history browser lists markers and player actions as jump targets.
+# Unit states are keyed by node NAME (sibling-unique, stable across
+# level reloads) so snapshots stay serialisable for the future
+# suspend-to-disk feature.
+var undo_stack  : Array = []
+var turn_number : int   = 0
 
 # ── Setup ──────────────────────────────────────────────────────────────────────
 
 func _ready() -> void:
     overlay.overlay_alpha = 0.5
     info_portrait.texture = AtlasTexture.new()
-    undo_button.pressed.connect(undo_move)
+    undo_button.pressed.connect(_open_history)
+    history_confirm.pressed.connect(_on_history_confirm)
+    history_panel.get_node("VBoxContainer/Buttons/CancelButton").pressed.connect(_on_history_cancel)
     attack_button.pressed.connect(_on_attack_pressed)
     wait_button.pressed.connect(_on_wait_pressed)
     settings_button.pressed.connect(_on_settings_pressed)
@@ -129,8 +138,11 @@ func _load_level(path: String) -> void:
         level.queue_free()
 
     # Reset match state. _deselect also clears menu/targeting/pending.
-    unit_map   = {}
-    undo_stack = []
+    unit_map    = {}
+    undo_stack  = []
+    turn_number = 0
+    _history_open = false
+    history_panel.visible = false
     _deselect()
     undo_button.disabled     = true
     _combat_active           = false
@@ -266,7 +278,7 @@ var _phase_changing : bool   = false   # input is ignored while banners play
 func _input_locked() -> bool:
     return _combat_active or _phase_changing or _walking \
             or _settings_open or _level_over or _game_over \
-            or _menu_open or _targeting
+            or _menu_open or _targeting or _history_open
 
 ## Begins a phase: refreshes every unit (the previous team un-greys, the
 ## new team gets its actions back) and plays the announcement banner.
@@ -276,6 +288,14 @@ func _start_phase(team: String) -> void:
     _deselect()
     for unit in units_node.get_children():
         unit.has_acted = false
+    if team == PLAYER_TEAM:
+        # Enemy-phase snapshots are never jump targets; drop them now
+        # that their round is over, then mark the new turn in history.
+        while not undo_stack.is_empty() and undo_stack.back()["team"] != PLAYER_TEAM:
+            undo_stack.pop_back()
+        turn_number += 1
+        undo_stack.append(_capture_snapshot("Turn %d" % turn_number, "turn"))
+        undo_button.disabled = false
     var title : String = "Player Phase" if team == PLAYER_TEAM else "Enemy Phase"
     turn_label.text = title
     _show_banner(title, BANNER_COLORS[team])
@@ -373,8 +393,9 @@ func _try_act_at(unit: Area2D, target: Vector2i) -> bool:
         # Direct strike gesture: approach the enemy, then the forecast
         # asks for one confirming click before combat commits.
         var launch : Vector2i = attack_targets[target]
+        var label  : String   = "%s attacks %s" % [unit.display_name(), unit_map[target].display_name()]
         _deselect()
-        _push_undo_snapshot()
+        _push_undo_snapshot(label)
         _move_then_forecast(unit, launch, target)
         return true
     if target == unit.cell:
@@ -385,7 +406,7 @@ func _try_act_at(unit: Area2D, target: Vector2i) -> bool:
         return true
     if target in reachable_cells:
         _deselect()
-        _push_undo_snapshot()
+        _push_undo_snapshot("%s moves" % unit.display_name())
         _move_unit_walking(unit, target)
         return true
     return false
@@ -602,6 +623,8 @@ func _handle_target_click(cell: Vector2i) -> void:
     if _targetable.has(cell):
         if _forecast_target == cell:
             var defender : Area2D = unit_map[cell]
+            if have_snapshot:
+                _set_last_label("%s attacks %s" % [unit.display_name(), defender.display_name()])
             _clear_pending()
             overlay.clear_all()
             _begin_combat(unit, defender, unit.cell, not have_snapshot)
@@ -686,9 +709,12 @@ func _on_wait_pressed() -> void:
         return
     var unit          : Area2D = _pending_unit
     var have_snapshot : bool   = _pending_snapshot_taken
+    var label         : String = "%s waits" % unit.display_name()
     _clear_pending()
-    if not have_snapshot:
-        _push_undo_snapshot()
+    if have_snapshot:
+        _set_last_label(label)
+    else:
+        _push_undo_snapshot(label)
     _finish_action(unit)
 
 # ── Move application ───────────────────────────────────────────────────────────
@@ -776,7 +802,8 @@ func _attack_damage(_attacker, _defender) -> int:
 func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
         push_snapshot: bool = true) -> void:
     if push_snapshot:
-        _push_undo_snapshot()  # one undo reverts approach move and damage
+        _push_undo_snapshot("%s attacks %s" %
+                [attacker.display_name(), defender.display_name()])
     _combat_active = true
 
     # Walk the approach (or just settle home when attacking in place).
@@ -896,12 +923,12 @@ func _on_level_select_pressed() -> void:
 
 # ── Undo ───────────────────────────────────────────────────────────────────────
 
-func _push_undo_snapshot() -> void:
-    # {node: state} for every unit node, so undo can restore each one's
-    # position, health, and visibility (defeats revert too).
+## Captures the complete board state as pure data (unit states keyed by
+## node name — no object references, so this is disk-serialisable).
+func _capture_snapshot(label: String, type: String = "action") -> Dictionary:
     var states : Dictionary = {}
     for unit in units_node.get_children():
-        states[unit] = {
+        states[String(unit.name)] = {
             "cell"     : unit.cell,
             "world"    : unit.global_position,
             "rest"     : unit._rest_position,
@@ -910,14 +937,104 @@ func _push_undo_snapshot() -> void:
             "hp"       : unit.hp,
             "acted"    : unit.has_acted,
         }
-    undo_stack.append({"unit_states": states, "team": current_team})
+    return {
+        "unit_states": states,
+        "team"       : current_team,
+        "turn"       : turn_number,
+        "label"      : label,
+        "type"       : type,
+    }
+
+func _push_undo_snapshot(label: String) -> void:
+    undo_stack.append(_capture_snapshot(label))
     undo_button.disabled = false
 
-## Called by the Undo button. Restores phase state too, so undoing the
-## action that ended a phase steps back into that phase. Enemy actions
-## are deterministic reactions, so snapshots taken during the enemy
-## phase collapse into the player action that provoked them: one undo
-## lands back on a state where it's the player's input.
+## Rewrites the newest snapshot's label once the action it precedes is
+## fully decided (a move finalises as "… waits" or "… attacks …").
+func _set_last_label(label: String) -> void:
+    if not undo_stack.is_empty():
+        undo_stack.back()["label"] = label
+
+# ── History browser ────────────────────────────────────────────────────────────
+# The Undo button opens a left-side panel listing every player action
+# and "Turn N" marker back to the start of the map, newest first.
+# Clicking an entry PREVIEWS that board state live (the camera will let
+# players scout it fully later); Confirm commits the jump and discards
+# the forward history, Cancel returns to the present.
+
+@onready var history_panel   : PanelContainer = $UI/HistoryPanel
+@onready var history_list    : VBoxContainer  = $UI/HistoryPanel/VBoxContainer/Scroll/HistoryList
+@onready var history_confirm : Button         = $UI/HistoryPanel/VBoxContainer/Buttons/ConfirmButton
+
+var _history_open     : bool       = false
+var _history_selected : int        = -1   # index into undo_stack, -1 = none
+var _history_present  : Dictionary = {}   # live state to return to on cancel
+
+func _open_history() -> void:
+    if _history_open:
+        return
+    if _input_locked() or undo_stack.is_empty():
+        return
+    _history_open     = true
+    _history_selected = -1
+    _history_present  = _capture_snapshot("Present")
+    history_confirm.disabled = true
+    _deselect_hover_only()
+    for child in history_list.get_children():
+        child.queue_free()
+    # Newest first; enemy snapshots are pruned each turn and never listed.
+    for i in range(undo_stack.size() - 1, -1, -1):
+        var snap : Dictionary = undo_stack[i]
+        if snap["team"] != PLAYER_TEAM:
+            continue
+        var btn : Button = Button.new()
+        btn.text = ("— %s —" % snap["label"]) if snap["type"] == "turn" else snap["label"]
+        btn.alignment = HORIZONTAL_ALIGNMENT_CENTER if snap["type"] == "turn" \
+                else HORIZONTAL_ALIGNMENT_LEFT
+        btn.toggle_mode = true
+        btn.button_group = _history_group
+        btn.pressed.connect(_on_history_entry.bind(i))
+        history_list.add_child(btn)
+    history_panel.visible = true
+
+var _history_group : ButtonGroup = ButtonGroup.new()
+
+func _deselect_hover_only() -> void:
+    _hovered_unit = null
+    _refresh_unit_info()
+
+## Clicking an entry: preview that snapshot on the board.
+func _on_history_entry(index: int) -> void:
+    _history_selected = index
+    _restore_snapshot(undo_stack[index])
+    history_confirm.disabled = false
+
+## Confirm: the previewed state becomes the present; everything after
+## it (including the selected entry itself) is discarded.
+func _on_history_confirm() -> void:
+    if _history_selected < 0:
+        return
+    undo_stack.resize(_history_selected)
+    _close_history()
+
+## Cancel: back to the present exactly as it was.
+func _on_history_cancel() -> void:
+    if _history_selected >= 0:
+        _restore_snapshot(_history_present)
+    _close_history()
+
+func _close_history() -> void:
+    _history_open         = false
+    _history_selected     = -1
+    _history_present      = {}
+    history_panel.visible = false
+    undo_button.disabled  = undo_stack.is_empty()
+
+## Quick single-step undo — still used by the Game Over screen. Restores
+## phase state too, so undoing the action that ended a phase steps back
+## into that phase. Enemy actions are deterministic reactions, so
+## snapshots taken during the enemy phase collapse into the player
+## action that provoked them: one undo lands back on the player's input.
 func undo_move() -> void:
     if _input_locked():
         return
@@ -932,12 +1049,17 @@ func undo_move() -> void:
     undo_button.disabled = undo_stack.is_empty()
 
 ## Restores a snapshot's unit states and phase bookkeeping. Shared by
-## undo and the action-menu cancel (which reverts one approach move).
+## undo, the action-menu cancel, and the history browser's preview/jump.
 func _restore_snapshot(snap: Dictionary) -> void:
     var states : Dictionary = snap["unit_states"]
     unit_map.clear()
-    for unit in states:
-        var s : Dictionary = states[unit]
+    for unit in units_node.get_children():
+        if not states.has(String(unit.name)):
+            # Not in this snapshot (a unit spawned later, once
+            # reinforcements exist) — it doesn't exist at that moment.
+            unit.defeat()
+            continue
+        var s : Dictionary = states[String(unit.name)]
         unit.cell            = s["cell"]
         unit.global_position = s["world"]
         unit._rest_position  = s["rest"]
@@ -950,4 +1072,5 @@ func _restore_snapshot(snap: Dictionary) -> void:
             unit_map[unit.cell] = unit
 
     current_team    = snap["team"]
+    turn_number     = snap["turn"]
     turn_label.text = "Player Phase" if current_team == PLAYER_TEAM else "Enemy Phase"
