@@ -71,9 +71,9 @@ position = Vector2(328, 328)
 position = Vector2(264, 328)
 unit_class = "cavalier"
 
-[node name="EnemySoldier" parent="Units" unique_id=1490840514 instance=ExtResource("5_unit")]
+[node name="EnemyKnight" parent="Units" unique_id=1490840514 instance=ExtResource("5_unit")]
 position = Vector2(584, 200)
-unit_class = "soldier"
+unit_class = "knight"
 team = "red"
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=495476610]

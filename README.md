@@ -41,12 +41,15 @@ Adding a brand-new terrain type is: add its art to
    enable grid snap: Snapping Options → *Configure Snap* → step 64×64,
    offset 8×8.)
 3. With the unit selected, set its properties in the Inspector:
-   - **Unit Class** — lord, fighter, cleric, cavalier, soldier, mage
+   - **Unit Class** — lord, fighter, cleric, cavalier, knight, mage
      (the sprite updates immediately in the editor)
    - **Team** — blue (player) or red (enemy)
-   - **Move Range** — how many movement points it gets per move
    - **Max Hp** — health (the bar under the unit; blue/red by team,
      dark grey for missing health)
+
+Movement is a class stat, not a per-unit setting: lords move 5,
+cavaliers 7, knights 4 (see `scripts/class_stats.gd` — tune classes or
+add stats there as the rpg system grows).
 4. To move a unit's starting position later, just drag it in the viewport.
 
 Red units can't be controlled by the player and block movement.
@@ -92,7 +95,9 @@ combat, banners, and enemy pacing uniformly. It ships at 1.0.
 
 ### Combat
 
-When a player unit is selected, enemies it can reach glow red. Dropping
+When a player unit is selected, its whole strike range beyond the blue
+movement tiles glows red; enemies standing anywhere in that red fringe
+can be attacked. Dropping
 (or clicking) on a red enemy moves the unit next to it and the two bump
 into each other: the attacker strikes first, then the defender
 counterattacks if it survived. Damage is a flat 1 for now — weapons and

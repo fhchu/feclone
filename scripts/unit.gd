@@ -16,16 +16,16 @@ extends Area2D
 const SPRITE_SIZE : int = 64
 
 # Columns in pieces.png, reinterpreted as unit classes.
-# (Chess K Q B N R P → lord, fighter, cleric, cavalier, soldier, mage.)
+# (Chess K Q B N R P → lord, fighter, cleric, cavalier, knight, mage.)
 const CLASS_COL : Dictionary = {
-    "lord": 0, "fighter": 1, "cleric": 2, "cavalier": 3, "soldier": 4, "mage": 5
+    "lord": 0, "fighter": 1, "cleric": 2, "cavalier": 3, "knight": 4, "mage": 5
 }
 const TEAM_ROW : Dictionary = {
     "blue": 0, "red": 1
 }
 
 # ── Designer-facing properties (set in the Inspector) ──────────────────────────
-@export_enum("lord", "fighter", "cleric", "cavalier", "soldier", "mage")
+@export_enum("lord", "fighter", "cleric", "cavalier", "knight", "mage")
 var unit_class : String = "lord":
     set(value):
         unit_class = value
@@ -38,7 +38,11 @@ var team : String = "blue":
         _refresh_sprite()
         queue_redraw()  # health bar fill colour follows the team
 
-@export_range(1, 10) var move_range : int = 3
+# Stats come from the class (see scripts/class_stats.gd) — no exp or
+# levels yet, so class bases are the whole stat line.
+var move_range : int:
+    get:
+        return ClassStats.mov(unit_class)
 
 @export_range(1, 99) var max_hp : int = 2:
     set(value):

@@ -126,6 +126,18 @@ func _get_reach_costs(unit) -> Dictionary:
             frontier.append(nxt)
     return costs
 
+## Every cell the unit could strike but not stand on: the red fringe one
+## weapon-reach (melee 1 for now) beyond the movement range, whether or
+## not anything is standing there.
+func _get_attack_fringe(costs: Dictionary) -> Array:
+    var fringe : Dictionary = {}
+    for cell in costs:
+        for dir in ORTHO_DIRS:
+            var n : Vector2i = cell + dir
+            if _in_bounds(n) and not costs.has(n):
+                fringe[n] = true
+    return fringe.keys()
+
 ## Enemy cells the unit can strike this move (melee range 1), mapped to
 ## the cheapest reachable cell to launch the attack from — possibly the
 ## cell it already stands on.
@@ -292,7 +304,9 @@ func _on_drag_started(unit: Area2D) -> void:
     reachable_cells = costs.keys()
     attack_targets  = _get_attack_targets(unit, costs)
     overlay.show_range(reachable_cells)
-    overlay.show_attack_cells(attack_targets.keys())
+    # The whole strike fringe reads red; only cells in attack_targets
+    # (the ones holding enemies) are actually actionable.
+    overlay.show_attack_cells(_get_attack_fringe(costs))
 
 func _on_drag_moved(unit: Area2D, world_pos: Vector2) -> void:
     if unit != selected_unit:
