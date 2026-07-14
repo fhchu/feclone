@@ -1,0 +1,17 @@
+[gd_resource type="TileSet" format=3 uid="uid://dgrndt1lesetq"]
+
+[ext_resource type="Texture2D" uid="uid://d2xh8lyru3ixu" path="res://assets/base_tiles.png" id="1_base"]
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_ground"]
+texture = ExtResource("1_base")
+texture_region_size = Vector2i(64, 64)
+0:0/0 = 0
+0:0/0/custom_data_0 = 1
+1:0/0 = 0
+1:0/0/custom_data_0 = 2
+
+[resource]
+tile_size = Vector2i(64, 64)
+custom_data_layer_0/name = "move_cost"
+custom_data_layer_0/type = 2
+sources/0 = SubResource("TileSetAtlasSource_ground")

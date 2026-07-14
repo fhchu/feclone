@@ -1,23 +1,25 @@
 # main.gd
-# Root Node2D. Owns all game state and coordinates unit nodes and the
-# Overlay display. Mirrors the structure of chess main.gd:
+# Attached to the game shell (scenes/game.tscn): the persistent board
+# logic, Overlay, and all UI. Levels are separate content-only scenes
+# (Ground + Units + metadata, see scripts/level.gd) instanced under
+# LevelHolder — _load_level() swaps them in place, so the shell survives
+# across levels and restarts. Mirrors the structure of chess main.gd:
 #   piece_map → unit_map, legal_moves → reachable_cells,
 #   captures → melee combat, and the same undo-snapshot pattern.
 #
 # Levels are authored entirely in the editor — no code changes needed:
-#   • Terrain: paint the Ground TileMapLayer with the TileMap editor.
-#     Movement cost comes from the TileSet's "move_cost" custom data
-#     (grass 1, forest 2). Unpainted cells are off the map.
-#   • Units:   instance unit.tscn under Units, drag it over a tile, and
-#     set class/team/move range/max hp in the Inspector. _ready() snaps
-#     each placed unit to its nearest cell and registers it.
+#   • Terrain: paint the level's Ground TileMapLayer. Movement cost is
+#     the shared TileSet's "move_cost" custom data (grass 1, forest 2;
+#     assets/ground_tiles.tres). Unpainted cells are off the map.
+#   • Units:   instance unit.tscn under the level's Units node and set
+#     class/team/max hp in the Inspector.
+#   • Metadata: loss_conditions etc. are exports on the Level root.
 
 extends Node2D
 
 # ── Scene references ───────────────────────────────────────────────────────────
-@onready var ground       : TileMapLayer   = $Ground
+@onready var level_holder : Node2D         = $LevelHolder
 @onready var overlay      : TileMapLayer   = $Overlay
-@onready var units_node   : Node2D         = $Units
 @onready var turn_label   : Label          = $UI/TurnLabel
 @onready var undo_button  : Button         = $UI/UndoButton
 @onready var phase_banner : PanelContainer = $UI/PhaseBanner
@@ -29,11 +31,18 @@ extends Node2D
 @onready var settings_panel   : PanelContainer = $UI/SettingsPanel
 @onready var game_over_screen : Control        = $UI/GameOverScreen
 
-# ── Objectives ─────────────────────────────────────────────────────────────────
-## Defeat conditions active on this level (see scripts/loss_conditions.gd
-## for the available names). Levels can stack several; any one ends the
-## level in defeat. Victory is currently always "rout the enemy".
-@export var loss_conditions : Array[String] = ["all_units_dead"]
+# ── Current level ──────────────────────────────────────────────────────────────
+# Set by _load_level(); ground and units_node point into the level
+# instance. loss_conditions copies the level's metadata export.
+var level              : Node2D       = null
+var ground             : TileMapLayer = null
+var units_node         : Node2D       = null
+var current_level_path : String       = ""
+var loss_conditions    : Array        = ["all_units_dead"]
+
+# Bumped on every _load_level; coroutines waiting on timers or signals
+# compare it after resuming so a restart/level-swap orphans them safely.
+var _level_generation : int = 0
 
 const PLAYER_TEAM : String = "blue"
 const ENEMY_TEAM  : String = "red"
@@ -77,8 +86,6 @@ var undo_stack : Array = []
 
 func _ready() -> void:
     overlay.overlay_alpha = 0.5
-    _register_placed_units()
-    undo_button.disabled = true
     undo_button.pressed.connect(undo_move)
     attack_button.pressed.connect(_on_attack_pressed)
     wait_button.pressed.connect(_on_wait_pressed)
@@ -89,6 +96,45 @@ func _ready() -> void:
     game_over_screen.get_node("VBoxContainer/UndoButton").pressed.connect(_on_game_over_undo)
     game_over_screen.get_node("VBoxContainer/RestartButton").pressed.connect(_on_restart_pressed)
     game_over_screen.get_node("VBoxContainer/LevelSelectButton").pressed.connect(_on_level_select_pressed)
+
+    # Level select stashes its pick in tree metadata (the chess-menu
+    # pattern); a plain boot starts the campaign from the top.
+    var start : String = Levels.LEVELS[0]
+    if get_tree().has_meta("level_path"):
+        start = get_tree().get_meta("level_path")
+        get_tree().remove_meta("level_path")
+    _load_level(start)
+
+## Swaps in a level scene and resets every per-level piece of state.
+## Used for boot, restarts, and rout-victory progression alike.
+func _load_level(path: String) -> void:
+    _level_generation += 1
+    if level != null:
+        level.queue_free()
+
+    # Reset match state. _deselect also clears menu/targeting/pending.
+    unit_map   = {}
+    undo_stack = []
+    _deselect()
+    undo_button.disabled     = true
+    _combat_active           = false
+    _walking                 = false
+    _phase_changing          = false
+    _settings_open           = false
+    _level_over              = false
+    _game_over               = false
+    settings_panel.visible   = false
+    game_over_screen.visible = false
+
+    current_level_path = path
+    level = load(path).instantiate()
+    level_holder.add_child(level)
+    ground          = level.get_node("Ground")
+    units_node      = level.get_node("Units")
+    loss_conditions = level.loss_conditions
+    overlay.position = ground.position  # the map decides where it sits
+
+    _register_placed_units()
     _start_phase(PLAYER_TEAM)
 
 ## Snaps every designer-placed unit under Units to its nearest cell and
@@ -224,7 +270,10 @@ func _show_banner(title: String, team_color: Color) -> void:
     banner_label.text = title
     phase_banner.modulate.a = 0.0
     phase_banner.visible    = true
+    # Bound to the level: swapping levels kills the tween and its
+    # callbacks, so a stale banner can never advance a dead phase.
     var tw : Tween = create_tween()
+    tw.bind_node(level)
     tw.tween_property(phase_banner, "modulate:a", 1.0, _anim(BANNER_FADE_IN))
     tw.tween_interval(_anim(BANNER_HOLD))
     tw.tween_property(phase_banner, "modulate:a", 0.0, _anim(BANNER_FADE_OUT))
@@ -244,18 +293,23 @@ const ENEMY_ACT_DELAY : float = 0.35  # beat between enemy actions
 ## as player attacks) or holds. The runner owns the phase hand-off —
 ## _finish_action never flips the phase while the enemy is acting.
 func _run_enemy_phase() -> void:
+    var gen : int = _level_generation
     for unit in units_node.get_children():
         if _level_over or _game_over:
             return  # the level was decided mid-phase
         if unit.team != current_team or not unit.visible:
             continue
         await get_tree().create_timer(_anim(ENEMY_ACT_DELAY)).timeout
+        if gen != _level_generation:
+            return  # the level was swapped out from under us
         if not unit.visible:
             continue  # defeated by a counterattack earlier this phase
         var action : Dictionary = EnemyAI.decide(unit, self)
         if action["type"] == "attack":
             _begin_combat(unit, action["target"], action["launch"])
             await combat_finished
+            if gen != _level_generation:
+                return
         else:
             unit.has_acted = true  # holds position; greys until next phase
     if _level_over or _game_over:
@@ -534,7 +588,10 @@ func _walk_unit(unit: Area2D, target: Vector2i) -> void:
     # A dragged unit hangs at its drop point; walking starts from home.
     unit.global_position = overlay.cell_center_world(unit.cell)
     if path.size() > 1:
+        # Bound to the level: a restart mid-walk kills the tween (and
+        # this coroutine never resumes — the fresh level owns the flags).
         var tw : Tween = create_tween()
+        tw.bind_node(level)
         for i in range(1, path.size()):
             tw.tween_property(unit, "global_position",
                     overlay.cell_center_world(path[i]), _anim(WALK_TIME_PER_TILE))
@@ -585,6 +642,7 @@ func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
     var counters : bool    = defender.hp > atk_dmg  # the defeated don't counter
 
     var tw : Tween = create_tween()
+    tw.bind_node(level)
     tw.tween_callback(func() -> void: attacker.z_index = 10)
     tw.tween_property(attacker, "global_position",
             atk_home.lerp(def_home, BUMP_DISTANCE), _anim(BUMP_TIME))
@@ -635,16 +693,19 @@ var _settings_open : bool = false
 var _level_over    : bool = false
 var _game_over     : bool = false
 
-## Rout victory: brief beat so the kill reads, then straight into the
-## next level from the Levels registry (level select after the last).
+## Rout victory: brief beat so the kill reads, then the next level is
+## swapped in place (level select after the last one).
 func _level_cleared() -> void:
     _level_over = true
     _deselect()
     turn_label.text = "Victory!"
+    var gen : int = _level_generation
     await get_tree().create_timer(_anim(LEVEL_CLEAR_DELAY)).timeout
-    var next : String = Levels.next_after(scene_file_path)
+    if gen != _level_generation:
+        return  # restarted (or otherwise swapped) during the beat
+    var next : String = Levels.next_after(current_level_path)
     if next != "":
-        get_tree().change_scene_to_file(next)
+        _load_level(next)
     else:
         get_tree().change_scene_to_file(Levels.LEVEL_SELECT)
 
@@ -657,7 +718,10 @@ func _show_game_over() -> void:
     _phase_changing = false
     _deselect()
     turn_label.text = "Game Over"
+    var gen : int = _level_generation
     await get_tree().create_timer(_anim(GAME_OVER_DELAY)).timeout
+    if gen != _level_generation:
+        return  # restarted during the beat
     game_over_screen.visible = true
 
 ## Undo Last Move on the defeat screen: rewind the fatal exchange (the
@@ -679,7 +743,7 @@ func _on_settings_back() -> void:
     settings_panel.visible = false
 
 func _on_restart_pressed() -> void:
-    get_tree().reload_current_scene()
+    _load_level(current_level_path)
 
 func _on_level_select_pressed() -> void:
     get_tree().change_scene_to_file(Levels.LEVEL_SELECT)

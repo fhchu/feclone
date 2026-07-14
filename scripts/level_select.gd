@@ -18,5 +18,7 @@ func _ready() -> void:
         btn.custom_minimum_size = TILE_SIZE
         btn.add_theme_font_size_override("font_size", NUMBER_FONT)
         btn.pressed.connect(func() -> void:
-            get_tree().change_scene_to_file(path))
+            # The game shell reads this pick from tree metadata on boot.
+            get_tree().set_meta("level_path", path)
+            get_tree().change_scene_to_file(Levels.GAME))
         grid.add_child(btn)

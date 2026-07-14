@@ -11,6 +11,7 @@ const LEVELS : Array[String] = [
 ]
 
 const LEVEL_SELECT : String = "res://scenes/level_select.tscn"
+const GAME         : String = "res://scenes/game.tscn"
 
 ## The scene to load after clearing the given level, or "" if it was the
 ## last one (or isn't in the registry).

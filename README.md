@@ -6,9 +6,16 @@ chess project.
 ## Level design guide (no programming required)
 
 Levels live in `scenes/levels/` (`level1.tscn`, `level2.tscn`, …) and
-each one is a self-contained scene you edit directly. To add a level:
-duplicate an existing level scene, edit it, and add its path to the
-list in `scripts/levels.gd` — the level select grid and the
+contain only designer content: a **Ground** terrain layer, a **Units**
+node with the placed units, and per-level metadata (like **Loss
+Conditions**) on the Level root. All UI and game logic live once in
+`scenes/game.tscn`, which loads levels into itself — so UI changes never
+touch level files, and level diffs are pure content. The tile sets are
+shared resources (`assets/ground_tiles.tres`), so new terrain types are
+one edit that every map inherits.
+
+To add a level: duplicate an existing level scene, edit it, and add its
+path to the list in `scripts/levels.gd` — the level select grid and the
 next-level progression both follow that list automatically.
 
 Defeating every enemy clears the level and loads the next one (the
