@@ -100,7 +100,8 @@ Each red unit picks its behaviour from two dropdowns in the Inspector
   `guard` (default): holds position until a player unit enters its
   attack range (movement + weapon reach).
 - **Ai Targeting** — who it attacks once engaged.
-  `lowest_hp` (default): the player unit in reach with the least health.
+  `default`: priority is can-kill, then most damage, then least
+  health, then closest.
 
 More behaviours (thieves fleeing with loot, bosses holding thrones,
 reinforcements rushing the front) will appear in these dropdowns as

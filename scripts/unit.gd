@@ -55,7 +55,7 @@ var move_range : int:
 # grow as new behaviours land (thieves, bosses, reinforcements…).
 @export_group("Enemy AI")
 @export_enum("guard") var ai_movement : String = "guard"
-@export_enum("lowest_hp") var ai_targeting : String = "lowest_hp"
+@export_enum("default") var ai_targeting : String = "default"
 @export_group("")
 
 # ── Runtime state ──────────────────────────────────────────────────────────────
