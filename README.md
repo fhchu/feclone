@@ -83,8 +83,14 @@ Turns follow the classic FE rhythm: select a unit, move it, then a
 centered action menu resolves the turn. **Attack** (top option, only
 listed when an enemy is within reach of the new position) switches to
 target selection — red squares mark the enemies in range; click one to
-strike, click anywhere else to return to the menu. **Wait** ends the
-turn on the spot. Clicking anywhere outside the menu cancels the whole
+strike. The first click on a target raises the **battle forecast** — a
+side panel (opposite your unit's half of the map) showing both names
+and an HP/Might comparison, blue column for you, red for the enemy — 
+and a second click on the same enemy commits the attack. Clicking a
+different target re-forecasts it; clicking anywhere else returns to
+the menu. Attacking an enemy directly from the range view works the
+same way: the unit approaches, the forecast raises, and one more click
+seals it. **Wait** ends the turn on the spot. Clicking anywhere outside the menu cancels the whole
 action — the unit snaps back to where it started, still selected, as
 if it had only been clicked. To wait (or attack) without moving, click
 the selected unit a second time to open the menu in place. A move plus

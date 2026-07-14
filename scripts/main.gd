@@ -35,6 +35,13 @@ extends Node2D
 @onready var info_name        : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/NameLabel
 @onready var info_hp          : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/HpLabel
 @onready var info_bar_fill    : ColorRect      = $UI/UnitInfoPanel/HBoxContainer/Info/HpBarBack/HpBarFill
+@onready var forecast_panel   : PanelContainer = $UI/ForecastPanel
+@onready var fc_atk_name      : Label          = $UI/ForecastPanel/VBoxContainer/AtkNameBox/AtkName
+@onready var fc_def_name      : Label          = $UI/ForecastPanel/VBoxContainer/DefNameBox/DefName
+@onready var fc_blue_hp       : Label          = $UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values/Hp
+@onready var fc_blue_mt       : Label          = $UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values/Mt
+@onready var fc_red_hp        : Label          = $UI/ForecastPanel/VBoxContainer/Cols/RedCol/Values/Hp
+@onready var fc_red_mt        : Label          = $UI/ForecastPanel/VBoxContainer/Cols/RedCol/Values/Mt
 
 const INFO_BAR_WIDTH : float = 120.0
 
@@ -85,6 +92,7 @@ var _pending_snapshot_taken : bool       = false  # its move already pushed an u
 var _menu_open              : bool       = false  # action menu is showing (modal)
 var _targeting              : bool       = false  # picking an attack target
 var _targetable             : Dictionary = {}     # enemy cell → true while targeting
+var _forecast_target        : Variant    = null   # cell whose forecast is up; next click commits
 
 # ── Undo stack ─────────────────────────────────────────────────────────────────
 var undo_stack : Array = []
@@ -362,12 +370,12 @@ func _team_done(team: String) -> bool:
 ## reachable. Returns false (selection untouched) if none apply.
 func _try_act_at(unit: Area2D, target: Vector2i) -> bool:
     if attack_targets.has(target):
-        # Direct strike: dropping/clicking straight onto an enemy is the
-        # quick path that skips the menu.
-        var defender : Area2D   = unit_map[target]
-        var launch   : Vector2i = attack_targets[target]
+        # Direct strike gesture: approach the enemy, then the forecast
+        # asks for one confirming click before combat commits.
+        var launch : Vector2i = attack_targets[target]
         _deselect()
-        _begin_combat(unit, defender, launch)
+        _push_undo_snapshot()
+        _move_then_forecast(unit, launch, target)
         return true
     if target == unit.cell:
         # Acting in place: no move, menu decides (Wait-without-moving).
@@ -550,14 +558,16 @@ func _open_action_menu(unit: Area2D, snapshot_taken: bool) -> void:
     # re-sorted — fewer options means a shorter menu, same width.
     action_menu.call_deferred("reset_size")
 
-## Resets every pending-action flag and hides the menu UI.
+## Resets every pending-action flag and hides the menu/forecast UI.
 func _clear_pending() -> void:
     _pending_unit           = null
     _pending_snapshot_taken = false
     _menu_open              = false
     _targeting              = false
     _targetable             = {}
+    _forecast_target        = null
     action_menu.visible     = false
+    forecast_panel.visible  = false
 
 ## Living enemies within weapon reach (melee 1) of the unit's cell.
 func _adjacent_enemies(unit: Area2D) -> Array:
@@ -572,29 +582,87 @@ func _adjacent_enemies(unit: Area2D) -> Array:
 func _on_attack_pressed() -> void:
     if _pending_unit == null:
         return
-    _menu_open          = false
-    action_menu.visible = false
-    _targeting          = true
-    _targetable         = {}
+    _menu_open              = false
+    action_menu.visible     = false
+    _targeting              = true
+    _targetable             = {}
+    _forecast_target        = null
+    forecast_panel.visible  = false
     for cell in _adjacent_enemies(_pending_unit):
         _targetable[cell] = true
     overlay.show_attack_cells(_targetable.keys())
 
-## A click while picking a target: strike a marked enemy; anything else
+## A click while picking a target: the first click on a marked enemy
+## raises the battle forecast, a second click on the same enemy commits
+## the attack (clicking another target re-forecasts it); anything else
 ## returns to the action menu.
 func _handle_target_click(cell: Vector2i) -> void:
     var unit          : Area2D = _pending_unit
     var have_snapshot : bool   = _pending_snapshot_taken
     if _targetable.has(cell):
-        var defender : Area2D = unit_map[cell]
-        _clear_pending()
-        overlay.clear_all()
-        _begin_combat(unit, defender, unit.cell, not have_snapshot)
+        if _forecast_target == cell:
+            var defender : Area2D = unit_map[cell]
+            _clear_pending()
+            overlay.clear_all()
+            _begin_combat(unit, defender, unit.cell, not have_snapshot)
+        else:
+            _forecast_target = cell
+            _show_forecast(unit, unit_map[cell])
     else:
-        _targeting  = false
-        _targetable = {}
+        _targeting              = false
+        _targetable             = {}
+        _forecast_target        = null
+        forecast_panel.visible  = false
         overlay.clear_range()
         _open_action_menu(unit, have_snapshot)
+
+## Direct attack gesture: walk to the launch cell, then enter targeting
+## with the forecast already up on the chosen enemy — the confirming
+## click keeps attacks deliberate. The approach snapshot is already
+## pushed, so cancelling from here rewinds cleanly.
+func _move_then_forecast(unit: Area2D, launch: Vector2i, target_cell: Vector2i) -> void:
+    await _walk_unit(unit, launch)
+    _pending_unit           = unit
+    _pending_snapshot_taken = true
+    _targeting              = true
+    _targetable             = {}
+    for cell in _adjacent_enemies(unit):
+        _targetable[cell] = true
+    overlay.show_attack_cells(_targetable.keys())
+    _forecast_target = target_cell
+    _show_forecast(unit, unit_map[target_cell])
+
+# ── Battle forecast ────────────────────────────────────────────────────────────
+# The pre-combat readout: attacker name in a blue box on top, enemy in
+# a red box below, and three columns between — blue attacker values,
+# grey stat labels (HP / Might; hit and crit later), red defender
+# values. Shown opposite the attacker's half of the map so it never
+# covers the fight.
+
+var _forecast_side_left : bool = false
+
+func _show_forecast(attacker: Area2D, defender: Area2D) -> void:
+    fc_atk_name.text = attacker.display_name()
+    fc_def_name.text = defender.display_name()
+    fc_blue_hp.text  = str(attacker.hp)
+    fc_blue_mt.text  = str(_attack_damage(attacker, defender))
+    fc_red_hp.text   = str(defender.hp)
+    fc_red_mt.text   = str(_attack_damage(defender, attacker))
+    var used : Rect2i = ground.get_used_rect()
+    _forecast_side_left = attacker.cell.x >= used.position.x + used.size.x / 2.0
+    forecast_panel.visible = true
+    forecast_panel.call_deferred("reset_size")
+    call_deferred("_place_forecast")
+
+## Positions the panel after the container has sized itself: vertically
+## centred, hugging the side of the screen away from the attacker.
+func _place_forecast() -> void:
+    if not forecast_panel.visible:
+        return
+    var vp : Vector2 = forecast_panel.get_viewport_rect().size
+    var x  : float   = 16.0 if _forecast_side_left \
+            else vp.x - forecast_panel.size.x - 16.0
+    forecast_panel.position = Vector2(x, (vp.y - forecast_panel.size.y) / 2.0)
 
 ## A click outside the open action menu: abort the pending action, snap
 ## the unit back to where its turn started (reverting the approach move
