@@ -27,6 +27,7 @@ extends Node2D
 @onready var action_menu     : PanelContainer = $UI/ActionMenu
 @onready var attack_button   : Button         = $UI/ActionMenu/VBoxContainer/AttackButton
 @onready var wait_button     : Button         = $UI/ActionMenu/VBoxContainer/WaitButton
+@onready var map_menu        : PanelContainer = $UI/MapMenu
 @onready var settings_button  : Button         = $UI/SettingsButton
 @onready var settings_panel   : PanelContainer = $UI/SettingsPanel
 @onready var game_over_screen : Control        = $UI/GameOverScreen
@@ -93,6 +94,8 @@ var _menu_open              : bool       = false  # action menu is showing (moda
 var _targeting              : bool       = false  # picking an attack target
 var _targetable             : Dictionary = {}     # enemy cell → true while targeting
 var _forecast_target        : Variant    = null   # cell whose forecast is up; next click commits
+var _menu_cancel_unit       : Variant    = null   # unit whose menu this press cancelled
+var _map_menu_open          : bool       = false  # End Turn map menu is showing
 
 # ── Undo stack / history ───────────────────────────────────────────────────────
 # Full-state snapshots, one per action, each labelled ("Lord attacks
@@ -114,7 +117,9 @@ func _ready() -> void:
     history_panel.get_node("VBoxContainer/Buttons/CancelButton").pressed.connect(_on_history_cancel)
     attack_button.pressed.connect(_on_attack_pressed)
     wait_button.pressed.connect(_on_wait_pressed)
+    map_menu.get_node("VBoxContainer/EndTurnButton").pressed.connect(_on_end_turn_pressed)
     settings_button.pressed.connect(_on_settings_pressed)
+    settings_panel.get_node("VBoxContainer/LordSpriteButton").pressed.connect(_on_lord_sprite_toggled)
     settings_panel.get_node("VBoxContainer/RestartButton").pressed.connect(_on_restart_pressed)
     settings_panel.get_node("VBoxContainer/LevelSelectButton").pressed.connect(_on_level_select_pressed)
     settings_panel.get_node("VBoxContainer/BackButton").pressed.connect(_on_settings_back)
@@ -143,6 +148,8 @@ func _load_level(path: String) -> void:
     turn_number = 0
     _history_open = false
     history_panel.visible = false
+    _menu_cancel_unit = null
+    _close_map_menu()
     _deselect()
     undo_button.disabled     = true
     _combat_active           = false
@@ -164,6 +171,8 @@ func _load_level(path: String) -> void:
     overlay.position = ground.position  # the map decides where it sits
 
     _register_placed_units()
+    _apply_lord_variant()
+    _update_lord_sprite_button()
     _start_phase(PLAYER_TEAM)
 
 ## Snaps every designer-placed unit under Units to its nearest cell and
@@ -201,10 +210,13 @@ func _terrain_cost(cell: Vector2i) -> int:
 
 # ── Movement range (replaces ChessRules.get_legal_moves) ──────────────────────
 
-## BFS flood-fill out to the unit's move range, accumulating terrain cost.
-## Returns {cell: cheapest cost}. Other units block passage and cannot be
-## stopped on; the unit's own cell is included at cost 0.
-func _get_reach_costs(unit) -> Dictionary:
+## BFS flood-fill accumulating terrain cost, bounded by the unit's move
+## range unless max_cost overrides it (the AI passes a huge bound to
+## measure whole-map distances). Returns {cell: cheapest cost}. Other
+## units block passage and cannot be stopped on; the unit's own cell is
+## included at cost 0.
+func _get_reach_costs(unit, max_cost: int = -1) -> Dictionary:
+    var limit    : int        = unit.move_range if max_cost < 0 else max_cost
     var costs    : Dictionary = {unit.cell: 0}
     var frontier : Array      = [unit.cell]
     while not frontier.is_empty():
@@ -216,7 +228,7 @@ func _get_reach_costs(unit) -> Dictionary:
             if unit_map.has(nxt) and unit_map[nxt] != unit:
                 continue  # later: allies passable but not stoppable, enemies block
             var cost : int = costs[cur] + _terrain_cost(nxt)
-            if cost > unit.move_range:
+            if cost > limit:
                 continue
             if costs.has(nxt) and costs[nxt] <= cost:
                 continue
@@ -278,7 +290,7 @@ var _phase_changing : bool   = false   # input is ignored while banners play
 func _input_locked() -> bool:
     return _combat_active or _phase_changing or _walking \
             or _settings_open or _level_over or _game_over \
-            or _menu_open or _targeting or _history_open
+            or _menu_open or _targeting or _history_open or _map_menu_open
 
 ## Begins a phase: refreshes every unit (the previous team un-greys, the
 ## new team gets its actions back) and plays the announcement banner.
@@ -349,6 +361,13 @@ func _run_enemy_phase() -> void:
             await combat_finished
             if gen != _level_generation:
                 return
+        elif action["type"] == "move":
+            # Advancing without a target (aggressive movement trigger).
+            _push_undo_snapshot("%s advances" % unit.display_name())
+            await _walk_unit(unit, action["to"])
+            if gen != _level_generation:
+                return
+            unit.has_acted = true
         else:
             unit.has_acted = true  # holds position; greys until next phase
     if _level_over or _game_over:
@@ -466,6 +485,12 @@ func _on_unit_clicked(unit: Area2D) -> void:
     # start), but guard anyway so they can never become the selection.
     if unit.team != PLAYER_TEAM or unit.has_acted:
         return
+    # The press that cancelled this unit's menu ends at the selection —
+    # click 3 of the cycle: select → menu → back to selection.
+    if unit == _menu_cancel_unit:
+        _menu_cancel_unit   = null
+        click_selected_unit = unit
+        return
     # Second click on the same unit → act in place: the action menu opens
     # without moving. (_handle_click_at left this press for us — see the
     # own-cell carve-out there.) Deselecting is done by clicking any
@@ -483,10 +508,14 @@ func _unhandled_input(event: InputEvent) -> void:
             event.pressed):
         return
     var cell : Vector2i = overlay.world_to_cell(get_global_mouse_position())
+    _menu_cancel_unit = null  # only ever lives for a single press
     if _menu_open:
         # Any press outside the menu panel (its buttons and backing
         # consume their own clicks) aborts the pending action.
         _cancel_action_menu()
+        return
+    if _map_menu_open:
+        _close_map_menu()
         return
     if _targeting:
         _handle_target_click(cell)
@@ -494,9 +523,16 @@ func _unhandled_input(event: InputEvent) -> void:
     _handle_click_at(cell)
 
 ## Click-style counterpart of _on_drop_attempted: acts on the selection
-## with the clicked cell through the same _try_act_at seam.
+## with the clicked cell through the same _try_act_at seam. With nothing
+## selected, an empty map tile opens the map menu (End Turn…).
 func _handle_click_at(cell: Vector2i) -> void:
-    if click_selected_unit == null or _input_locked():
+    if _input_locked():
+        return
+    if click_selected_unit == null:
+        # Presses on units select via physics picking after this; only a
+        # genuinely empty on-map tile summons the map menu.
+        if _in_bounds(cell) and not unit_map.has(cell):
+            _open_map_menu()
         return
     # Press on the selected unit's own cell: leave it for the clicked
     # signal, which opens the in-place action menu (or a drag begins).
@@ -505,6 +541,30 @@ func _handle_click_at(cell: Vector2i) -> void:
     var unit : Area2D = click_selected_unit
     if not _try_act_at(unit, cell):
         _deselect()
+
+# ── Map menu ───────────────────────────────────────────────────────────────────
+# Opened by clicking an empty tile with nothing selected. End Turn stays
+# the BOTTOM entry (like Wait in the unit menu); future commands (unit
+# list, objectives, options…) stack above it in the same VBoxContainer.
+
+func _open_map_menu() -> void:
+    _map_menu_open   = true
+    map_menu.visible = true
+    map_menu.call_deferred("reset_size")
+
+func _close_map_menu() -> void:
+    _map_menu_open   = false
+    map_menu.visible = false
+
+## End Turn: hand the round to the enemy with unmoved units left as-is.
+## Snapshotted like any player action, so history shows "End turn" and
+## jumping there restores the moment before the hand-off.
+func _on_end_turn_pressed() -> void:
+    if not _map_menu_open:
+        return
+    _close_map_menu()
+    _push_undo_snapshot("End turn")
+    _start_phase(ENEMY_TEAM)
 
 func _deselect() -> void:
     click_selected_unit = null
@@ -702,6 +762,10 @@ func _cancel_action_menu() -> void:
         undo_button.disabled = undo_stack.is_empty()
     _select_unit(unit)
     click_selected_unit = unit
+    # If this press was on the unit itself, its clicked signal is about
+    # to fire — remember to swallow it so the third click in the
+    # click-click-click cycle lands on the selection, not a fresh menu.
+    _menu_cancel_unit = unit
 
 ## Wait: end the pending unit's turn where it stands.
 func _on_wait_pressed() -> void:
@@ -730,14 +794,17 @@ func _move_unit(unit: Area2D, to_cell: Vector2i) -> void:
     unit_map[to_cell] = unit
 
 ## Reconstructs the cheapest path from the unit to target (start cell
-## included) by descending the BFS cost field: each step back goes to a
-## neighbour whose cost is exactly this cell's cost minus its terrain
-## cost — such a neighbour always exists on an optimal field.
+## included) within its move range.
 func _build_path(unit: Area2D, target: Vector2i) -> Array:
-    var costs : Dictionary = _get_reach_costs(unit)
-    var path  : Array      = [target]
-    var cur   : Vector2i   = target
-    while cur != unit.cell:
+    return _build_path_through(_get_reach_costs(unit), unit.cell, target)
+
+## Path reconstruction over any cost field, by descending it: each step
+## back goes to a neighbour whose cost is exactly this cell's cost minus
+## its terrain cost — such a neighbour always exists on an optimal field.
+func _build_path_through(costs: Dictionary, start: Vector2i, target: Vector2i) -> Array:
+    var path : Array    = [target]
+    var cur  : Vector2i = target
+    while cur != start:
         var stepped : bool = false
         for dir in ORTHO_DIRS:
             var prev : Vector2i = cur + dir
@@ -746,7 +813,7 @@ func _build_path(unit: Area2D, target: Vector2i) -> Array:
                 stepped = true
                 break
         if not stepped:
-            push_warning("No path back from %s for %s" % [target, unit.name])
+            push_warning("No path back from %s to %s" % [target, start])
             break
         path.push_front(cur)
     return path
@@ -914,6 +981,38 @@ func _on_settings_pressed() -> void:
 func _on_settings_back() -> void:
     _settings_open = false
     settings_panel.visible = false
+
+## Cosmetic preference: the lord's male/female sprite (both are lords).
+## null until the player first uses the toggle — level-authored variants
+## stand until then. Once set, it's held on the shell so it survives
+## level swaps and overrides what levels author.
+var lord_female : Variant = null
+
+## The variant currently in effect: the player's preference if any,
+## otherwise whatever the level's (first) lord was authored with.
+func _lord_shows_female() -> bool:
+    if lord_female != null:
+        return lord_female
+    for unit in units_node.get_children():
+        if unit.unit_class == "lord":
+            return unit.sprite_variant == "female"
+    return false
+
+func _on_lord_sprite_toggled() -> void:
+    lord_female = not _lord_shows_female()
+    _apply_lord_variant()
+    _update_lord_sprite_button()
+
+func _apply_lord_variant() -> void:
+    if lord_female == null:
+        return  # no preference expressed — respect the level's authoring
+    for unit in units_node.get_children():
+        if unit.unit_class == "lord":
+            unit.sprite_variant = "female" if lord_female else "male"
+
+func _update_lord_sprite_button() -> void:
+    settings_panel.get_node("VBoxContainer/LordSpriteButton").text = \
+            "Lord: Female" if _lord_shows_female() else "Lord: Male"
 
 func _on_restart_pressed() -> void:
     _load_level(current_level_path)

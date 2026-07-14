@@ -49,20 +49,28 @@ Adding a brand-new terrain type is: add its art to
 
 1. In the FileSystem dock, drag `scenes/unit.tscn` onto the **Units**
    node (or right-click Units → *Instantiate Child Scene*).
-2. Drag the unit roughly over the tile where it should start — it snaps
-   to the nearest tile centre when the game runs. (For tidy placement,
-   enable grid snap: Snapping Options → *Configure Snap* → step 64×64,
-   offset 8×8.)
+2. Drag the unit over the tile where it should start — units snap
+   themselves to tile centres while you drag them in the editor (in
+   every level, no snap configuration needed), and the game re-snaps
+   on load regardless.
 3. With the unit selected, set its properties in the Inspector:
-   - **Unit Class** — lord, fighter, cleric, cavalier, knight, mage
+   - **Unit Class** — lord, cleric, cavalier, knight, mage, soldier
      (the sprite updates immediately in the editor)
+   - **Sprite Variant** — male/female, for classes that offer both
+     (currently the lord)
+   - **Character Name** — optional unique name ("Lyon"); empty units
+     display their class name
    - **Team** — blue (player) or red (enemy)
    - **Max Hp** — health (the bar under the unit; blue/red by team,
      dark grey for missing health)
+4. Name unit nodes as neutral IDs (`Enemy1`, `Ally2`), never after
+   their class — names are save/undo keys and must stay meaningful
+   when you later re-class a squad. Names must be unique within a
+   level and shouldn't change once a level ships.
 
-Movement is a class stat, not a per-unit setting: lords move 5,
-cavaliers 7, knights 4 (see `scripts/class_stats.gd` — tune classes or
-add stats there as the rpg system grows).
+Movement and sprites are class data, not per-unit settings: lords move
+5, cavaliers 7, knights 4, soldiers 5 (see `scripts/class_stats.gd` —
+tune classes, add stats, or point classes at sprite columns there).
 4. To move a unit's starting position later, just drag it in the viewport.
 
 Red units can't be controlled by the player and block movement.
@@ -96,10 +104,14 @@ the menu. Attacking an enemy directly from the range view works the
 same way: the unit approaches, the forecast raises, and one more click
 seals it. **Wait** ends the turn on the spot. Clicking anywhere outside the menu cancels the whole
 action — the unit snaps back to where it started, still selected, as
-if it had only been clicked. To wait (or attack) without moving, click
-the selected unit a second time to open the menu in place. A move plus
-its menu action counts as a single undo step. Items joins the menu
-later.
+if it had only been clicked. Clicking the same unit cycles its states:
+select → in-place menu → back to selection. A move plus its menu
+action counts as a single undo step. Items joins the menu later.
+
+Clicking an empty tile with nothing selected opens the map menu, with
+**End Turn** as its bottom entry (future commands stack above it) —
+handing the round to the enemy with unmoved units staying put. It's a
+history entry like any action, so it can be undone or jumped past.
 
 Dropping a dragged unit directly onto a red-fringe enemy still performs
 the quick move-and-attack without the menu.
@@ -112,6 +124,9 @@ Each red unit picks its behaviour from two dropdowns in the Inspector
 - **Ai Movement** — when the unit commits to moving.
   `guard` (default): holds position until a player unit enters its
   attack range (movement + weapon reach).
+  `aggressive`: hunts from turn one — marches along the cheapest path
+  toward whichever player unit is fewest movement-turns away, and
+  attacks as soon as someone is in reach.
 - **Ai Targeting** — who it attacks once engaged.
   `default`: priority is can-kill, then most damage, then least
   health, then closest.

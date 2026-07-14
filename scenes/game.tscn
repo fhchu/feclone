@@ -303,6 +303,27 @@ theme_override_font_sizes/font_size = 22
 text = "Knight"
 horizontal_alignment = 1
 
+[node name="MapMenu" type="PanelContainer" parent="UI"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_menu")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/MapMenu"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="EndTurnButton" type="Button" parent="UI/MapMenu/VBoxContainer"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "End Turn"
+
 [node name="HistoryPanel" type="PanelContainer" parent="UI"]
 visible = false
 anchor_top = 0.5
@@ -381,6 +402,10 @@ layout_mode = 2
 layout_mode = 2
 text = "Settings"
 horizontal_alignment = 1
+
+[node name="LordSpriteButton" type="Button" parent="UI/SettingsPanel/VBoxContainer"]
+layout_mode = 2
+text = "Lord: Male"
 
 [node name="RestartButton" type="Button" parent="UI/SettingsPanel/VBoxContainer"]
 layout_mode = 2

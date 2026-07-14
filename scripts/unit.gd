@@ -15,21 +15,30 @@ extends Area2D
 # Must match the actual pixel dimensions of pieces.png.
 const SPRITE_SIZE : int = 64
 
-# Columns in pieces.png, reinterpreted as unit classes.
-# (Chess K Q B N R P → lord, fighter, cleric, cavalier, knight, mage.)
-const CLASS_COL : Dictionary = {
-    "lord": 0, "fighter": 1, "cleric": 2, "cavalier": 3, "knight": 4, "mage": 5
-}
+# Sprite columns come from ClassStats (classes and columns are no
+# longer 1:1 — variants and shared art exist); rows are the teams.
 const TEAM_ROW : Dictionary = {
     "blue": 0, "red": 1
 }
 
 # ── Designer-facing properties (set in the Inspector) ──────────────────────────
-@export_enum("lord", "fighter", "cleric", "cavalier", "knight", "mage")
+@export_enum("cavalier", "cleric", "knight", "lord", "mage", "soldier")
 var unit_class : String = "lord":
     set(value):
         unit_class = value
         _refresh_sprite()
+
+## Cosmetic sprite variant where the class offers one (the lord's
+## male/female pair); classes without the variant show their default.
+@export_enum("female", "male")
+var sprite_variant : String = "male":
+    set(value):
+        sprite_variant = value
+        _refresh_sprite()
+
+## Optional unique-character name ("Lyon", "Cormag"). Empty means the
+## unit is a generic and displays its class name.
+@export var character_name : String = ""
 
 @export_enum("blue", "red")
 var team : String = "blue":
@@ -54,7 +63,7 @@ var move_range : int:
 # (ignored for player units) — see scripts/enemy_ai.gd. The dropdowns
 # grow as new behaviours land (thieves, bosses, reinforcements…).
 @export_group("Enemy AI")
-@export_enum("guard") var ai_movement : String = "guard"
+@export_enum("aggressive", "guard") var ai_movement : String = "guard"
 @export_enum("default") var ai_targeting : String = "default"
 @export_group("")
 
@@ -101,10 +110,9 @@ signal drop_attempted(unit: Area2D, world_pos: Vector2)
 ## Fired when the press is released with under DRAG_THRESHOLD of movement.
 signal clicked(unit: Area2D)
 
-## Name shown in the hover info card. Unique characters ("Lyon",
-## "Cormag") will override this with a real name property later.
+## Name shown in the hover info card and battle forecast.
 func display_name() -> String:
-    return unit_class.capitalize()
+    return character_name if character_name != "" else unit_class.capitalize()
 
 # ── Lifecycle ──────────────────────────────────────────────────────────────────
 
@@ -112,9 +120,27 @@ func _ready() -> void:
     _refresh_sprite()
     _apply_acted_tint()
     if Engine.is_editor_hint():
+        # Editor-only: snap to tile centres while being dragged, so
+        # designers get grid snapping in every level with no per-scene
+        # editor configuration.
+        set_notify_local_transform(true)
         return
     input_pickable = true
     connect("input_event", _on_input_event)
+
+# Tile centres sit at map origin (40,40) + half a 64px tile. If a level
+# ever moves its Ground node, runtime registration still snaps units to
+# real cells — this only steers the editor preview.
+const EDITOR_SNAP_STEP   : Vector2 = Vector2(64, 64)
+const EDITOR_SNAP_OFFSET : Vector2 = Vector2(72, 72)
+
+func _notification(what: int) -> void:
+    if what == NOTIFICATION_LOCAL_TRANSFORM_CHANGED \
+            and Engine.is_editor_hint() and is_node_ready():
+        var snapped_pos : Vector2 = (position - EDITOR_SNAP_OFFSET).snapped(EDITOR_SNAP_STEP) \
+                + EDITOR_SNAP_OFFSET
+        if position != snapped_pos:
+            position = snapped_pos  # re-notifies once; equality ends it
 
 ## Greys the sprite out while the unit has acted. The material is
 ## resource_local_to_scene, so each unit tints independently.
@@ -133,8 +159,8 @@ func _refresh_sprite() -> void:
     var sprite : Sprite2D = $Sprite2D
     sprite.region_enabled = true
     sprite.region_rect    = Rect2(
-        CLASS_COL[unit_class] * SPRITE_SIZE,
-        TEAM_ROW[team]        * SPRITE_SIZE,
+        ClassStats.sprite_col(unit_class, sprite_variant) * SPRITE_SIZE,
+        TEAM_ROW[team] * SPRITE_SIZE,
         SPRITE_SIZE,
         SPRITE_SIZE
     )

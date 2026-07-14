@@ -19,6 +19,7 @@ const PASS : Dictionary = {"type": "pass"}
 ## Decides one unit's action for this phase. board is main.gd, used for
 ## map queries. Returns one of:
 ##   {"type": "pass"}                                     — hold position
+##   {"type": "move", "to": Vector2i}                     — advance only
 ##   {"type": "attack", "target": Area2D, "launch": Vector2i}
 static func decide(unit: Area2D, board: Node2D) -> Dictionary:
     # Player units this unit could strike this turn (target cell → cell
@@ -32,6 +33,13 @@ static func decide(unit: Area2D, board: Node2D) -> Dictionary:
             # attack range, then engage.
             if candidates.is_empty():
                 return PASS
+        "aggressive":
+            # Hunts immediately: when nobody is attackable this turn,
+            # march along the cheapest route toward the player unit that
+            # is fewest movement-turns away (by path cost, so terrain
+            # and blockers count).
+            if candidates.is_empty():
+                return _advance_toward_nearest(unit, board)
         _:
             push_warning("Unknown ai_movement '%s' on %s" % [unit.ai_movement, unit.name])
             return PASS
@@ -54,6 +62,34 @@ static func decide(unit: Area2D, board: Node2D) -> Dictionary:
         _:
             push_warning("Unknown ai_targeting '%s' on %s" % [unit.ai_targeting, unit.name])
             return PASS
+
+## The furthest step this turn along the cheapest path to the nearest
+## player-adjacent cell (nearest by whole-map path cost). Passes when
+## every player unit is unreachable (walled off by units or terrain).
+static func _advance_toward_nearest(unit: Area2D, board: Node2D) -> Dictionary:
+    var full : Dictionary = board._get_reach_costs(unit, 999999)
+    var best_launch : Variant = null
+    for cell in board.unit_map:
+        if board.unit_map[cell].team == unit.team:
+            continue
+        for dir in board.ORTHO_DIRS:
+            var launch : Vector2i = cell + dir
+            if full.has(launch) and (best_launch == null or full[launch] < full[best_launch]):
+                best_launch = launch
+    if best_launch == null or best_launch == unit.cell:
+        return PASS
+    # Walk the ideal path and stop at the last cell this turn affords.
+    var path   : Array    = board._build_path_through(full, unit.cell, best_launch)
+    var budget : int      = unit.move_range
+    var dest   : Vector2i = unit.cell
+    for i in range(1, path.size()):
+        budget -= board._terrain_cost(path[i])
+        if budget < 0:
+            break
+        dest = path[i]
+    if dest == unit.cell:
+        return PASS
+    return {"type": "move", "to": dest}
 
 ## True when candidate cell a is a strictly better target than b:
 ## can-kill, then more damage dealt, then lower hp, then closer by
