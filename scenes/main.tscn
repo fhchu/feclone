@@ -117,3 +117,13 @@ text = "Player Phase"
 label_settings = SubResource("LabelSettings_banner")
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="ActionMenu" type="PanelContainer" parent="UI"]
+visible = false
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/ActionMenu"]
+layout_mode = 2
+
+[node name="WaitButton" type="Button" parent="UI/ActionMenu/VBoxContainer"]
+layout_mode = 2
+text = "Wait"

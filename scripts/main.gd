@@ -22,6 +22,8 @@ extends Node2D
 @onready var undo_button  : Button         = $UI/UndoButton
 @onready var phase_banner : PanelContainer = $UI/PhaseBanner
 @onready var banner_label : Label          = $UI/PhaseBanner/BannerLabel
+@onready var action_menu  : PanelContainer = $UI/ActionMenu
+@onready var wait_button  : Button         = $UI/ActionMenu/VBoxContainer/WaitButton
 
 const PLAYER_TEAM : String = "blue"
 const ENEMY_TEAM  : String = "red"
@@ -59,6 +61,7 @@ func _ready() -> void:
     _register_placed_units()
     undo_button.disabled = true
     undo_button.pressed.connect(undo_move)
+    wait_button.pressed.connect(_on_wait_pressed)
     _start_phase(PLAYER_TEAM)
 
 ## Snaps every designer-placed unit under Units to its nearest cell and
@@ -268,8 +271,10 @@ func _on_drag_started(unit: Area2D) -> void:
         unit.cancel_drag()
         return
 
-    # Clear previous selection's range tiles.
+    # Clear previous selection's range tiles; the menu stays hidden while
+    # the mouse is down and reopens from the clicked signal on release.
     overlay.clear_range()
+    _hide_action_menu()
 
     selected_unit = unit
     var costs : Dictionary = _get_reach_costs(unit)
@@ -315,8 +320,9 @@ func _on_unit_clicked(unit: Area2D) -> void:
         _deselect()
         return
     # First click: drag_started already fired on mouse-down and showed this
-    # unit's range, so all we need to do here is record the click-selection.
+    # unit's range; record the click-selection and open its action menu.
     click_selected_unit = unit
+    _show_action_menu(unit)
 
 func _unhandled_input(event: InputEvent) -> void:
     if not (event is InputEventMouseButton and
@@ -344,6 +350,40 @@ func _deselect() -> void:
     reachable_cells     = []
     attack_targets      = {}
     overlay.clear_all()
+    _hide_action_menu()
+
+# ── Action menu ────────────────────────────────────────────────────────────────
+# A small dropdown that pops up beside the click-selected unit. Wait is
+# its only entry for now; Items and the weapon picker become sibling
+# buttons in the same VBoxContainer later. Menu buttons are Controls, so
+# the GUI consumes their clicks before _unhandled_input or physics
+# picking can deselect the unit underneath.
+
+## Places the menu beside the unit, flipping to its left when it would
+## poke past the painted map's right edge (plus margin). Measured off
+## the map rather than the window so any viewport behaves the same.
+## There is no camera, so world coords are canvas coords.
+func _show_action_menu(unit: Area2D) -> void:
+    action_menu.reset_size()
+    var pos : Vector2 = unit.global_position + Vector2(40, -20)
+    var map_right : float = ground.position.x + \
+            ground.get_used_rect().end.x * ground.tile_set.tile_size.x
+    if pos.x + action_menu.size.x > map_right + 36:
+        pos.x = unit.global_position.x - 40 - action_menu.size.x
+    action_menu.position = pos
+    action_menu.visible  = true
+
+func _hide_action_menu() -> void:
+    action_menu.visible = false
+
+## Wait: end the selected unit's turn without moving.
+func _on_wait_pressed() -> void:
+    if _input_locked() or click_selected_unit == null:
+        return
+    var unit : Area2D = click_selected_unit
+    _deselect()
+    _push_undo_snapshot()
+    _finish_action(unit)
 
 # ── Move application ───────────────────────────────────────────────────────────
 
