@@ -5,7 +5,17 @@ chess project.
 
 ## Level design guide (no programming required)
 
-Everything below happens in the Godot editor, inside `scenes/main.tscn`.
+Levels live in `scenes/levels/` (`level1.tscn`, `level2.tscn`, …) and
+each one is a self-contained scene you edit directly. To add a level:
+duplicate an existing level scene, edit it, and add its path to the
+list in `scripts/levels.gd` — the level select grid and the
+next-level progression both follow that list automatically.
+
+Defeating every enemy clears the level and loads the next one (the
+level select screen after the last). The **Settings** button in the
+bottom-right corner opens a menu with Restart Level and Level Select.
+
+Everything below happens in the Godot editor, inside a level scene.
 
 ### Painting terrain
 
