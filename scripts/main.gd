@@ -24,8 +24,15 @@ extends Node2D
 @onready var banner_label : Label          = $UI/PhaseBanner/BannerLabel
 @onready var action_menu     : PanelContainer = $UI/ActionMenu
 @onready var wait_button     : Button         = $UI/ActionMenu/VBoxContainer/WaitButton
-@onready var settings_button : Button         = $UI/SettingsButton
-@onready var settings_panel  : PanelContainer = $UI/SettingsPanel
+@onready var settings_button  : Button         = $UI/SettingsButton
+@onready var settings_panel   : PanelContainer = $UI/SettingsPanel
+@onready var game_over_screen : Control        = $UI/GameOverScreen
+
+# ── Objectives ─────────────────────────────────────────────────────────────────
+## Defeat conditions active on this level (see scripts/loss_conditions.gd
+## for the available names). Levels can stack several; any one ends the
+## level in defeat. Victory is currently always "rout the enemy".
+@export var loss_conditions : Array[String] = ["all_units_dead"]
 
 const PLAYER_TEAM : String = "blue"
 const ENEMY_TEAM  : String = "red"
@@ -68,6 +75,9 @@ func _ready() -> void:
     settings_panel.get_node("VBoxContainer/RestartButton").pressed.connect(_on_restart_pressed)
     settings_panel.get_node("VBoxContainer/LevelSelectButton").pressed.connect(_on_level_select_pressed)
     settings_panel.get_node("VBoxContainer/BackButton").pressed.connect(_on_settings_back)
+    game_over_screen.get_node("VBoxContainer/UndoButton").pressed.connect(_on_game_over_undo)
+    game_over_screen.get_node("VBoxContainer/RestartButton").pressed.connect(_on_restart_pressed)
+    game_over_screen.get_node("VBoxContainer/LevelSelectButton").pressed.connect(_on_level_select_pressed)
     _start_phase(PLAYER_TEAM)
 
 ## Snaps every designer-placed unit under Units to its nearest cell and
@@ -179,7 +189,7 @@ var _phase_changing : bool   = false   # input is ignored while banners play
 ## or the level already decided. Every input handler checks this first.
 func _input_locked() -> bool:
     return _combat_active or _phase_changing or _walking \
-            or _settings_open or _level_over
+            or _settings_open or _level_over or _game_over
 
 ## Begins a phase: refreshes every unit (the previous team un-greys, the
 ## new team gets its actions back) and plays the announcement banner.
@@ -223,8 +233,8 @@ const ENEMY_ACT_DELAY : float = 0.35  # beat between enemy actions
 ## _finish_action never flips the phase while the enemy is acting.
 func _run_enemy_phase() -> void:
     for unit in units_node.get_children():
-        if _level_over:
-            return  # a counterattack routed the enemy mid-phase
+        if _level_over or _game_over:
+            return  # the level was decided mid-phase
         if unit.team != current_team or not unit.visible:
             continue
         await get_tree().create_timer(_anim(ENEMY_ACT_DELAY)).timeout
@@ -236,7 +246,7 @@ func _run_enemy_phase() -> void:
             await combat_finished
         else:
             unit.has_acted = true  # holds position; greys until next phase
-    if _level_over:
+    if _level_over or _game_over:
         return
     _start_phase(PLAYER_TEAM)
 
@@ -523,9 +533,11 @@ func _end_combat(attacker: Area2D, defender: Area2D) -> void:
             unit_map.erase(unit.cell)
             unit.defeat()
     _combat_active = false
-    # Rout victory preempts phase bookkeeping. (Defeat — all player units
-    # down — and boss objectives land here too, later.)
-    if _team_wiped(ENEMY_TEAM):
+    # Level outcomes preempt phase bookkeeping. Defeat is checked first:
+    # in any simultaneous reading, losing your army loses the level.
+    if LossConditions.any_met(loss_conditions, self):
+        _show_game_over()
+    elif _team_wiped(ENEMY_TEAM):
         _level_cleared()
     else:
         _finish_action(attacker)
@@ -541,9 +553,11 @@ func _team_wiped(team: String) -> bool:
 # ── Level flow ─────────────────────────────────────────────────────────────────
 
 const LEVEL_CLEAR_DELAY : float = 0.8  # beat after the final blow lands
+const GAME_OVER_DELAY   : float = 0.8  # beat before the defeat screen
 
 var _settings_open : bool = false
 var _level_over    : bool = false
+var _game_over     : bool = false
 
 ## Rout victory: brief beat so the kill reads, then straight into the
 ## next level from the Levels registry (level select after the last).
@@ -557,6 +571,26 @@ func _level_cleared() -> void:
         get_tree().change_scene_to_file(next)
     else:
         get_tree().change_scene_to_file(Levels.LEVEL_SELECT)
+
+## Defeat: brief beat so the killing blow reads, then the Game Over
+## screen. The phase machinery stops where it was; _game_over owns the
+## input lock from here (any stale _phase_changing is cleared so Undo
+## can hand control back cleanly).
+func _show_game_over() -> void:
+    _game_over      = true
+    _phase_changing = false
+    _deselect()
+    turn_label.text = "Game Over"
+    await get_tree().create_timer(_anim(GAME_OVER_DELAY)).timeout
+    game_over_screen.visible = true
+
+## Undo Last Move on the defeat screen: rewind the fatal exchange (the
+## enemy phase collapses into the player action that provoked it) and
+## resume playing from there.
+func _on_game_over_undo() -> void:
+    _game_over = false
+    game_over_screen.visible = false
+    undo_move()
 
 ## The Settings button works even while input is otherwise locked —
 ## scene changes tear down any animation safely.

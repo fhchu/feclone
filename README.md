@@ -15,6 +15,12 @@ Defeating every enemy clears the level and loads the next one (the
 level select screen after the last). The **Settings** button in the
 bottom-right corner opens a menu with Restart Level and Level Select.
 
+Losing triggers a Game Over screen with Undo Last Move / Restart /
+Level Select. Which defeats apply is per level: the **Loss Conditions**
+list on the Main node names them (just `all_units_dead` for now; things
+like `lord_dies` come later — see `scripts/loss_conditions.gd`). A
+level can stack several; any one of them ends it.
+
 Everything below happens in the Godot editor, inside a level scene.
 
 ### Painting terrain
