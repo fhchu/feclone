@@ -8,22 +8,6 @@
 [sub_resource type="LabelSettings" id="LabelSettings_turn"]
 font_size = 20
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_menu"]
-content_margin_left = 10.0
-content_margin_top = 10.0
-content_margin_right = 10.0
-content_margin_bottom = 10.0
-bg_color = Color(0.08, 0.1, 0.28, 0.95)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.78, 0.83, 0.95, 1)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
 content_margin_top = 16.0
 content_margin_bottom = 16.0
@@ -36,22 +20,6 @@ border_color = Color(0.25, 0.55, 1, 1)
 font_size = 44
 outline_size = 12
 outline_color = Color(0.25, 0.55, 1, 1)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_info"]
-content_margin_left = 8.0
-content_margin_top = 8.0
-content_margin_right = 10.0
-content_margin_bottom = 8.0
-bg_color = Color(0.07, 0.07, 0.09, 0.92)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.55, 0.55, 0.6, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fcblue"]
 content_margin_left = 8.0
@@ -115,7 +83,6 @@ visible = false
 offset_left = 8.0
 offset_top = 8.0
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_info")
 
 [node name="HBoxContainer" type="HBoxContainer" parent="UI/UnitInfoPanel"]
 layout_mode = 2
@@ -185,7 +152,6 @@ anchor_right = 0.5
 anchor_bottom = 0.5
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_menu")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/ActionMenu"]
 layout_mode = 2
@@ -206,7 +172,6 @@ text = "Wait"
 [node name="ForecastPanel" type="PanelContainer" parent="UI"]
 visible = false
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_info")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/ForecastPanel"]
 layout_mode = 2
@@ -317,7 +282,6 @@ anchor_right = 0.5
 anchor_bottom = 0.5
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_menu")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/MapMenu"]
 layout_mode = 2
@@ -337,7 +301,6 @@ offset_left = 12.0
 offset_top = -240.0
 offset_bottom = 240.0
 grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_info")
 
 [node name="VBoxContainer" type="VBoxContainer" parent="UI/HistoryPanel"]
 layout_mode = 2
@@ -380,8 +343,8 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -160.0
-offset_top = -84.0
+offset_left = -170.0
+offset_top = -130.0
 offset_right = -8.0
 offset_bottom = -8.0
 grow_horizontal = 0
@@ -389,16 +352,19 @@ grow_vertical = 0
 alignment = 2
 theme_override_constants/separation = 6
 
-[node name="DangerRow" type="HBoxContainer" parent="UI/CornerButtons"]
+[node name="DangerPanel" type="PanelContainer" parent="UI/CornerButtons"]
 layout_mode = 2
 size_flags_horizontal = 8
+
+[node name="DangerRow" type="HBoxContainer" parent="UI/CornerButtons/DangerPanel"]
+layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="DangerLabel" type="Label" parent="UI/CornerButtons/DangerRow"]
+[node name="DangerLabel" type="Label" parent="UI/CornerButtons/DangerPanel/DangerRow"]
 layout_mode = 2
 text = "Danger Zone"
 
-[node name="DangerZoneCheck" type="CheckBox" parent="UI/CornerButtons/DangerRow"]
+[node name="DangerZoneCheck" type="CheckBox" parent="UI/CornerButtons/DangerPanel/DangerRow"]
 layout_mode = 2
 
 [node name="SettingsButton" type="Button" parent="UI/CornerButtons"]
@@ -427,10 +393,6 @@ layout_mode = 2
 layout_mode = 2
 text = "Settings"
 horizontal_alignment = 1
-
-[node name="LordSpriteButton" type="Button" parent="UI/SettingsPanel/VBoxContainer"]
-layout_mode = 2
-text = "Lord: Male"
 
 [node name="RestartButton" type="Button" parent="UI/SettingsPanel/VBoxContainer"]
 layout_mode = 2

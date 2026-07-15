@@ -87,8 +87,8 @@ The **Undo** button opens the history browser: a left-side list of
 every player action ("Cavalier attacks Knight", "Lord waits") with a
 "— Turn N —" marker at each round, back to the start of the map.
 Clicking an entry previews that board state; **Confirm** jumps there
-for real (discarding what came after), **Cancel** returns to the
-present. Enemy responses belong to the player action that provoked
+for real (discarding what came after), **Cancel** — or re-clicking the
+Undo button — returns to the present. Enemy responses belong to the player action that provoked
 them and are never separate entries.
 
 Turns follow the classic FE rhythm: select a unit, move it, then a

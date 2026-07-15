@@ -29,7 +29,7 @@ extends Node2D
 @onready var wait_button     : Button         = $UI/ActionMenu/VBoxContainer/WaitButton
 @onready var map_menu          : PanelContainer = $UI/MapMenu
 @onready var danger_layer      : Node2D         = $DangerLayer
-@onready var danger_zone_check : CheckBox       = $UI/CornerButtons/DangerRow/DangerZoneCheck
+@onready var danger_zone_check : CheckBox       = $UI/CornerButtons/DangerPanel/DangerRow/DangerZoneCheck
 @onready var settings_button  : Button         = $UI/CornerButtons/SettingsButton
 @onready var settings_panel   : PanelContainer = $UI/SettingsPanel
 @onready var game_over_screen : Control        = $UI/GameOverScreen
@@ -121,11 +121,7 @@ func _ready() -> void:
     wait_button.pressed.connect(_on_wait_pressed)
     map_menu.get_node("VBoxContainer/EndTurnButton").pressed.connect(_on_end_turn_pressed)
     danger_zone_check.toggled.connect(_on_danger_all_toggled)
-    # Project style: toggles are checkboxes, and "on" draws an ×.
-    danger_zone_check.add_theme_icon_override("unchecked", _make_toggle_icon(false))
-    danger_zone_check.add_theme_icon_override("checked", _make_toggle_icon(true))
     settings_button.pressed.connect(_on_settings_pressed)
-    settings_panel.get_node("VBoxContainer/LordSpriteButton").pressed.connect(_on_lord_sprite_toggled)
     settings_panel.get_node("VBoxContainer/RestartButton").pressed.connect(_on_restart_pressed)
     settings_panel.get_node("VBoxContainer/LevelSelectButton").pressed.connect(_on_level_select_pressed)
     settings_panel.get_node("VBoxContainer/BackButton").pressed.connect(_on_settings_back)
@@ -181,9 +177,7 @@ func _load_level(path: String) -> void:
     danger_layer.clear_preview()
 
     _register_placed_units()
-    _apply_lord_variant()
-    _update_lord_sprite_button()
-    _refresh_danger()  # the Danger Zone button carries across levels
+    _refresh_danger()  # the Danger Zone checkbox carries across levels
     _start_phase(PLAYER_TEAM)
 
 ## Snaps every designer-placed unit under Units to its nearest cell and
@@ -608,24 +602,6 @@ func _on_danger_all_toggled(pressed: bool) -> void:
     _danger_all = pressed
     _refresh_danger()
     _refresh_hover_preview()
-
-## Checkbox icons for the project's toggle style: an outlined box that
-## fills with an × (not a check) when on.
-func _make_toggle_icon(checked: bool) -> ImageTexture:
-    var s   : int   = 16
-    var col : Color = Color(0.9, 0.9, 0.95)
-    var img : Image = Image.create(s, s, false, Image.FORMAT_RGBA8)
-    for i in s:
-        img.set_pixel(i, 0, col)
-        img.set_pixel(i, s - 1, col)
-        img.set_pixel(0, i, col)
-        img.set_pixel(s - 1, i, col)
-    if checked:
-        for i in range(3, s - 3):
-            for t in range(2):
-                img.set_pixel(clampi(i + t, 0, s - 1), i, col)
-                img.set_pixel(clampi(s - 1 - i + t, 0, s - 1), i, col)
-    return ImageTexture.create_from_image(img)
 
 ## True when this unit's threat is already on screen at full strength.
 func _zone_already_shown(unit: Area2D) -> bool:
@@ -1083,47 +1059,19 @@ func _on_game_over_undo() -> void:
     game_over_screen.visible = false
     undo_move()
 
-## The Settings button works even while input is otherwise locked —
-## scene changes tear down any animation safely.
+## The Settings button toggles its panel, and works even while input is
+## otherwise locked — scene changes tear down any animation safely.
+## (Lord appearance is level-authored via each unit's sprite_variant.)
 func _on_settings_pressed() -> void:
+    if _settings_open:
+        _on_settings_back()
+        return
     _settings_open = true
     settings_panel.visible = true
 
 func _on_settings_back() -> void:
     _settings_open = false
     settings_panel.visible = false
-
-## Cosmetic preference: the lord's male/female sprite (both are lords).
-## null until the player first uses the toggle — level-authored variants
-## stand until then. Once set, it's held on the shell so it survives
-## level swaps and overrides what levels author.
-var lord_female : Variant = null
-
-## The variant currently in effect: the player's preference if any,
-## otherwise whatever the level's (first) lord was authored with.
-func _lord_shows_female() -> bool:
-    if lord_female != null:
-        return lord_female
-    for unit in units_node.get_children():
-        if unit.unit_class == "lord":
-            return unit.sprite_variant == "female"
-    return false
-
-func _on_lord_sprite_toggled() -> void:
-    lord_female = not _lord_shows_female()
-    _apply_lord_variant()
-    _update_lord_sprite_button()
-
-func _apply_lord_variant() -> void:
-    if lord_female == null:
-        return  # no preference expressed — respect the level's authoring
-    for unit in units_node.get_children():
-        if unit.unit_class == "lord":
-            unit.sprite_variant = "female" if lord_female else "male"
-
-func _update_lord_sprite_button() -> void:
-    settings_panel.get_node("VBoxContainer/LordSpriteButton").text = \
-            "Lord: Female" if _lord_shows_female() else "Lord: Male"
 
 func _on_restart_pressed() -> void:
     _load_level(current_level_path)
@@ -1182,6 +1130,8 @@ var _history_present  : Dictionary = {}   # live state to return to on cancel
 
 func _open_history() -> void:
     if _history_open:
+        # The Undo button toggles the browser shut (previews cancel).
+        _on_history_cancel()
         return
     if _input_locked() or undo_stack.is_empty():
         return
@@ -1215,6 +1165,8 @@ func _deselect_hover_only() -> void:
 
 ## Clicking an entry: preview that snapshot on the board.
 func _on_history_entry(index: int) -> void:
+    if not _history_open:
+        return
     _history_selected = index
     _restore_snapshot(undo_stack[index])
     history_confirm.disabled = false
@@ -1222,6 +1174,8 @@ func _on_history_entry(index: int) -> void:
 ## Confirm: the previewed state becomes the present; everything after
 ## it (including the selected entry itself) is discarded.
 func _on_history_confirm() -> void:
+    if not _history_open:
+        return
     if _history_selected < 0:
         return
     undo_stack.resize(_history_selected)
@@ -1229,6 +1183,8 @@ func _on_history_confirm() -> void:
 
 ## Cancel: back to the present exactly as it was.
 func _on_history_cancel() -> void:
+    if not _history_open:
+        return
     if _history_selected >= 0:
         _restore_snapshot(_history_present)
     _close_history()
