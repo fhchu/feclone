@@ -239,6 +239,11 @@ func cancel_drag() -> void:
     global_position = _rest_position
     z_index         = 1
 
+## Dark red shade while this unit's danger zone is being tracked.
+## Tints only the sprite so the health bar stays readable.
+func set_danger_marked(marked: bool) -> void:
+    $Sprite2D.modulate = Color(0.75, 0.3, 0.3) if marked else Color.WHITE
+
 ## Applies damage and refreshes the health bar. Flat subtraction for now;
 ## main.gd computes the amount (rpg stats like def/crit plug in there later).
 func take_damage(amount: int) -> void:

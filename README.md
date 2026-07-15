@@ -150,6 +150,19 @@ name (class name for now; unique characters get real names later), and
 current/max hp with a bar. It hides while a unit is selected or
 anything else owns the screen.
 
+### Danger zones
+
+Hovering any unit — yours or theirs — faintly previews its movement
+and strike range. Clicking an enemy (with nothing selected) toggles it
+into danger tracking: the unit tints dark red and every tile any
+tracked enemy could strike is shaded translucent grey, outlined in red
+along the outer boundary only — toggling more enemies merges their
+zones into one outline. The **Danger Zone** checkbox (bottom-right, stacked above
+the Settings button; shows an × when on) displays every enemy's
+combined zone at once without tinting anyone, and stays on across
+levels; individual tracking works on top of it. Zones update live as
+units move or fall.
+
 ### Combat
 
 When a player unit is selected, its whole strike range beyond the blue

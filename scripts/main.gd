@@ -27,8 +27,10 @@ extends Node2D
 @onready var action_menu     : PanelContainer = $UI/ActionMenu
 @onready var attack_button   : Button         = $UI/ActionMenu/VBoxContainer/AttackButton
 @onready var wait_button     : Button         = $UI/ActionMenu/VBoxContainer/WaitButton
-@onready var map_menu        : PanelContainer = $UI/MapMenu
-@onready var settings_button  : Button         = $UI/SettingsButton
+@onready var map_menu          : PanelContainer = $UI/MapMenu
+@onready var danger_layer      : Node2D         = $DangerLayer
+@onready var danger_zone_check : CheckBox       = $UI/CornerButtons/DangerRow/DangerZoneCheck
+@onready var settings_button  : Button         = $UI/CornerButtons/SettingsButton
 @onready var settings_panel   : PanelContainer = $UI/SettingsPanel
 @onready var game_over_screen : Control        = $UI/GameOverScreen
 @onready var info_panel       : PanelContainer = $UI/UnitInfoPanel
@@ -118,6 +120,10 @@ func _ready() -> void:
     attack_button.pressed.connect(_on_attack_pressed)
     wait_button.pressed.connect(_on_wait_pressed)
     map_menu.get_node("VBoxContainer/EndTurnButton").pressed.connect(_on_end_turn_pressed)
+    danger_zone_check.toggled.connect(_on_danger_all_toggled)
+    # Project style: toggles are checkboxes, and "on" draws an ×.
+    danger_zone_check.add_theme_icon_override("unchecked", _make_toggle_icon(false))
+    danger_zone_check.add_theme_icon_override("checked", _make_toggle_icon(true))
     settings_button.pressed.connect(_on_settings_pressed)
     settings_panel.get_node("VBoxContainer/LordSpriteButton").pressed.connect(_on_lord_sprite_toggled)
     settings_panel.get_node("VBoxContainer/RestartButton").pressed.connect(_on_restart_pressed)
@@ -168,11 +174,16 @@ func _load_level(path: String) -> void:
     ground          = level.get_node("Ground")
     units_node      = level.get_node("Units")
     loss_conditions = level.loss_conditions
-    overlay.position = ground.position  # the map decides where it sits
+    overlay.position      = ground.position  # the map decides where it sits
+    danger_layer.position = ground.position
+    _danger_units = {}
+    danger_layer.set_union({})
+    danger_layer.clear_preview()
 
     _register_placed_units()
     _apply_lord_variant()
     _update_lord_sprite_button()
+    _refresh_danger()  # the Danger Zone button carries across levels
     _start_phase(PLAYER_TEAM)
 
 ## Snaps every designer-placed unit under Units to its nearest cell and
@@ -445,7 +456,8 @@ func _on_drag_started(unit: Area2D) -> void:
 func _select_unit(unit: Area2D) -> void:
     overlay.clear_range()
     selected_unit = unit
-    _refresh_unit_info()  # selection hides the hover card
+    _refresh_unit_info()      # selection hides the hover card
+    _refresh_hover_preview()  # …and the enemy range preview
     var costs : Dictionary = _get_reach_costs(unit)
     reachable_cells = costs.keys()
     attack_targets  = _get_attack_targets(unit, costs)
@@ -529,9 +541,13 @@ func _handle_click_at(cell: Vector2i) -> void:
     if _input_locked():
         return
     if click_selected_unit == null:
-        # Presses on units select via physics picking after this; only a
-        # genuinely empty on-map tile summons the map menu.
-        if _in_bounds(cell) and not unit_map.has(cell):
+        # Presses on player units select via physics picking after this;
+        # enemies toggle their danger zone, and a genuinely empty on-map
+        # tile summons the map menu.
+        var occupant = unit_map.get(cell)
+        if occupant != null and occupant.team == ENEMY_TEAM:
+            _toggle_danger(occupant)
+        elif occupant == null and _in_bounds(cell):
             _open_map_menu()
         return
     # Press on the selected unit's own cell: leave it for the clicked
@@ -573,7 +589,98 @@ func _deselect() -> void:
     attack_targets      = {}
     overlay.clear_all()
     _clear_pending()
-    _refresh_unit_info()  # the hover card may come back once nothing is selected
+    _refresh_unit_info()      # the hover card may come back once nothing is selected
+    _refresh_hover_preview()
+
+# ── Danger zones ───────────────────────────────────────────────────────────────
+# Clicking an enemy (with nothing selected) toggles it into the tracked
+# set: the unit tints dark red and DangerLayer shades every cell any
+# tracked enemy could strike, outlined only along the union's outer
+# boundary. The Danger Zone button shows EVERY enemy's zone at once
+# without tinting anyone; individual tracking rides on top of it.
+# Hovering any unit whose zone isn't already displayed previews its
+# range faintly — player units included.
+
+var _danger_units : Dictionary = {}      # unit → true while tracked
+var _danger_all   : bool       = false   # Danger Zone button state (shell-persistent)
+
+func _on_danger_all_toggled(pressed: bool) -> void:
+    _danger_all = pressed
+    _refresh_danger()
+    _refresh_hover_preview()
+
+## Checkbox icons for the project's toggle style: an outlined box that
+## fills with an × (not a check) when on.
+func _make_toggle_icon(checked: bool) -> ImageTexture:
+    var s   : int   = 16
+    var col : Color = Color(0.9, 0.9, 0.95)
+    var img : Image = Image.create(s, s, false, Image.FORMAT_RGBA8)
+    for i in s:
+        img.set_pixel(i, 0, col)
+        img.set_pixel(i, s - 1, col)
+        img.set_pixel(0, i, col)
+        img.set_pixel(s - 1, i, col)
+    if checked:
+        for i in range(3, s - 3):
+            for t in range(2):
+                img.set_pixel(clampi(i + t, 0, s - 1), i, col)
+                img.set_pixel(clampi(s - 1 - i + t, 0, s - 1), i, col)
+    return ImageTexture.create_from_image(img)
+
+## True when this unit's threat is already on screen at full strength.
+func _zone_already_shown(unit: Area2D) -> bool:
+    return _danger_units.has(unit) \
+            or (_danger_all and unit.team == ENEMY_TEAM)
+
+func _toggle_danger(unit: Area2D) -> void:
+    if _danger_units.has(unit):
+        _danger_units.erase(unit)
+        unit.set_danger_marked(false)
+    else:
+        _danger_units[unit] = true
+        unit.set_danger_marked(true)
+    _refresh_danger()
+    _refresh_hover_preview()  # tracked units stop showing the preview
+
+## Every cell a unit could strike this turn: neighbours of everywhere it
+## can stand (its own melee coverage), movement and blockers included.
+func _threat_cells(unit: Area2D, into: Dictionary) -> void:
+    var costs : Dictionary = _get_reach_costs(unit)
+    for cell in costs:
+        for dir in ORTHO_DIRS:
+            var n : Vector2i = cell + dir
+            if _in_bounds(n):
+                into[n] = true
+
+## Recomputes the union. Called whenever the board changes shape —
+## moves, deaths, restores — so zones track the live battlefield.
+func _refresh_danger() -> void:
+    for unit in _danger_units.keys():
+        if not is_instance_valid(unit) or not unit.visible:
+            _danger_units.erase(unit)
+    var union : Dictionary = {}
+    if _danger_all:
+        for unit in units_node.get_children():
+            if unit.team == ENEMY_TEAM and unit.visible:
+                _threat_cells(unit, union)
+    else:
+        for unit in _danger_units:
+            _threat_cells(unit, union)
+    danger_layer.set_union(union)
+
+## Faint range preview while hovering any unit — either team — in the
+## idle state, unless its zone is already displayed at full strength.
+func _refresh_hover_preview() -> void:
+    var show : bool = _hovered_unit != null \
+            and is_instance_valid(_hovered_unit) and _hovered_unit.visible \
+            and not _zone_already_shown(_hovered_unit) \
+            and selected_unit == null and click_selected_unit == null \
+            and not _input_locked()
+    if not show:
+        danger_layer.clear_preview()
+        return
+    var costs : Dictionary = _get_reach_costs(_hovered_unit)
+    danger_layer.show_preview(costs.keys(), _get_attack_fringe(costs))
 
 # ── Unit info card (hover) ─────────────────────────────────────────────────────
 # A neutral greyscale card in the top-left showing the hovered unit's
@@ -586,11 +693,13 @@ var _hovered_unit : Variant = null   # Area2D under the mouse, or null
 func _on_unit_mouse_entered(unit: Area2D) -> void:
     _hovered_unit = unit
     _refresh_unit_info()
+    _refresh_hover_preview()
 
 func _on_unit_mouse_exited(unit: Area2D) -> void:
     if _hovered_unit == unit:
         _hovered_unit = null
         _refresh_unit_info()
+        _refresh_hover_preview()
 
 ## Recomputes the card's visibility and contents. Called from the hover
 ## signals and from the selection/state transitions that should hide or
@@ -792,6 +901,7 @@ func _move_unit(unit: Area2D, to_cell: Vector2i) -> void:
     unit_map.erase(unit.cell)
     unit.move_to(to_cell, overlay.cell_center_world(to_cell))
     unit_map[to_cell] = unit
+    _refresh_danger()  # blockers moved; tracked zones may have reshaped
 
 ## Reconstructs the cheapest path from the unit to target (start cell
 ## included) within its move range.
@@ -907,6 +1017,7 @@ func _end_combat(attacker: Area2D, defender: Area2D) -> void:
             unit_map.erase(unit.cell)
             unit.defeat()
     _combat_active = false
+    _refresh_danger()  # deaths reshape (or dissolve) tracked zones
     # Level outcomes preempt phase bookkeeping. Defeat is checked first:
     # in any simultaneous reading, losing your army loses the level.
     if LossConditions.any_met(loss_conditions, self):
@@ -1173,3 +1284,4 @@ func _restore_snapshot(snap: Dictionary) -> void:
     current_team    = snap["team"]
     turn_number     = snap["turn"]
     turn_label.text = "Player Phase" if current_team == PLAYER_TEAM else "Enemy Phase"
+    _refresh_danger()  # restored board; tracked zones follow it
