@@ -20,6 +20,7 @@ extends Node2D
 # ── Scene references ───────────────────────────────────────────────────────────
 @onready var level_holder : Node2D         = $LevelHolder
 @onready var overlay      : TileMapLayer   = $Overlay
+@onready var camera       : Camera2D       = $GameCamera
 @onready var turn_label   : Label          = $UI/TurnLabel
 @onready var undo_button  : Button         = $UI/UndoButton
 @onready var phase_banner : PanelContainer = $UI/PhaseBanner
@@ -65,6 +66,64 @@ const PLAYER_TEAM : String = "blue"
 const ENEMY_TEAM  : String = "red"
 
 const ORTHO_DIRS : Array = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
+
+# ── Camera ─────────────────────────────────────────────────────────────────────
+# Edge scrolling: the mouse standing in the outermost two tiles of the
+# screen pans the view (the mouse plays the role a cursor will have),
+# clamped so the camera never shows past the map. Minimum-size maps
+# (10×10 — exactly one screen) collapse the clamp range and never
+# scroll. Paused while input is locked so mousing to menus and panels
+# doesn't drag the view around.
+
+const EDGE_SCROLL_TILES : float = 2.0    # edge zone width, in tiles
+const EDGE_SCROLL_SPEED : float = 520.0  # pixels per second
+
+var _cam_min : Vector2 = Vector2.ZERO  # clamp range for the camera centre
+var _cam_max : Vector2 = Vector2.ZERO
+
+func _process(delta: float) -> void:
+    _tick_camera(get_viewport().get_mouse_position(), delta)
+
+## One frame of edge scrolling; split from _process so tests can feed a
+## fake mouse position.
+func _tick_camera(mouse_pos: Vector2, delta: float) -> void:
+    if level == null or _input_locked():
+        return
+    var vp     : Vector2 = get_viewport().get_visible_rect().size
+    var margin : float   = EDGE_SCROLL_TILES * 64.0
+    var dir    : Vector2 = Vector2.ZERO
+    if mouse_pos.x < margin:
+        dir.x -= 1.0
+    elif mouse_pos.x > vp.x - margin:
+        dir.x += 1.0
+    if mouse_pos.y < margin:
+        dir.y -= 1.0
+    elif mouse_pos.y > vp.y - margin:
+        dir.y += 1.0
+    if dir == Vector2.ZERO:
+        return
+    camera.position = (camera.position + dir * EDGE_SCROLL_SPEED * delta) \
+            .clamp(_cam_min, _cam_max)
+
+## Fits the camera to the loaded map: clamp bounds from the painted
+## rect, starting view at the map centre. Axes where the map is no
+## bigger than the screen pin to the map's centre.
+func _update_camera_bounds() -> void:
+    var used : Rect2i  = ground.get_used_rect()
+    var tile : Vector2 = Vector2(ground.tile_set.tile_size)
+    var map  : Rect2   = Rect2(ground.position + Vector2(used.position) * tile,
+            Vector2(used.size) * tile)
+    var half : Vector2 = get_viewport().get_visible_rect().size / 2.0
+    var centre : Vector2 = map.get_center()
+    _cam_min = map.position + half
+    _cam_max = map.end - half
+    if _cam_max.x < _cam_min.x:
+        _cam_min.x = centre.x
+        _cam_max.x = centre.x
+    if _cam_max.y < _cam_min.y:
+        _cam_min.y = centre.y
+        _cam_max.y = centre.y
+    camera.position = centre.clamp(_cam_min, _cam_max)
 
 # ── Pacing ─────────────────────────────────────────────────────────────────────
 ## Global animation speed multiplier. Every animated duration in the game
@@ -172,6 +231,7 @@ func _load_level(path: String) -> void:
     loss_conditions = level.loss_conditions
     overlay.position      = ground.position  # the map decides where it sits
     danger_layer.position = ground.position
+    _update_camera_bounds()
     _danger_units = {}
     danger_layer.set_union({})
     danger_layer.clear_preview()
@@ -816,8 +876,10 @@ func _show_forecast(attacker: Area2D, defender: Area2D) -> void:
     fc_blue_mt.text  = str(_attack_damage(attacker, defender))
     fc_red_hp.text   = str(defender.hp)
     fc_red_mt.text   = str(_attack_damage(defender, attacker))
-    var used : Rect2i = ground.get_used_rect()
-    _forecast_side_left = attacker.cell.x >= used.position.x + used.size.x / 2.0
+    # Side-pick from the attacker's on-SCREEN position (camera-aware):
+    # the panel goes to whichever half the attacker isn't on.
+    var screen_x : float = attacker.get_global_transform_with_canvas().origin.x
+    _forecast_side_left = screen_x >= get_viewport().get_visible_rect().size.x / 2.0
     forecast_panel.visible = true
     forecast_panel.call_deferred("reset_size")
     call_deferred("_place_forecast")

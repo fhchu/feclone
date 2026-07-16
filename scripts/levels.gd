@@ -8,6 +8,7 @@ class_name Levels
 const LEVELS : Array[String] = [
     "res://scenes/levels/level1.tscn",
     "res://scenes/levels/level2.tscn",
+    "res://scenes/levels/level3.tscn",
 ]
 
 const LEVEL_SELECT : String = "res://scenes/level_select.tscn"

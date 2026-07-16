@@ -128,11 +128,11 @@ func _ready() -> void:
     input_pickable = true
     connect("input_event", _on_input_event)
 
-# Tile centres sit at map origin (40,40) + half a 64px tile. If a level
-# ever moves its Ground node, runtime registration still snaps units to
-# real cells — this only steers the editor preview.
+# Tile centres sit at half a 64px tile from the map origin (0,0). If a
+# level ever moves its Ground node, runtime registration still snaps
+# units to real cells — this only steers the editor preview.
 const EDITOR_SNAP_STEP   : Vector2 = Vector2(64, 64)
-const EDITOR_SNAP_OFFSET : Vector2 = Vector2(72, 72)
+const EDITOR_SNAP_OFFSET : Vector2 = Vector2(32, 32)
 
 func _notification(what: int) -> void:
     if what == NOTIFICATION_LOCAL_TRANSFORM_CHANGED \

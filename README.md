@@ -135,6 +135,20 @@ More behaviours (thieves fleeing with loot, bosses holding thrones,
 reinforcements rushing the front) will appear in these dropdowns as
 they're implemented — mixing the two halves per unit is the point.
 
+### Display & camera
+
+The window can be resized, maximised, or fullscreened to any
+resolution: the 640×640 design space scales up (letterboxed square),
+UI text re-renders crisply at the real resolution, and the pixel art
+stays hard-edged via nearest-neighbour filtering (pixel-perfect at
+integer scales: 1280, 1920, 2560…).
+
+One screen shows exactly a 10×10 map — the minimum map size, filling
+the view with no border. Bigger maps scroll: moving the mouse into the
+outermost two tiles of the screen pans the camera (the mouse stands in
+for the cursor), clamped to the map's edges. Maps should start at the
+scene origin and be at least 10 tiles on each axis.
+
 ### Pacing
 
 Units walk their movement paths tile-by-tile (player and enemy alike).
