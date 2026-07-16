@@ -38,12 +38,18 @@ Everything below happens in the Godot editor, inside a level scene.
 3. Unpainted cells are *off the map*: units can never enter them. The map
    does not have to be rectangular — paint any shape you like.
 
-Movement cost lives on the tiles themselves: select the Ground node →
-Inspector → **Tile Set** → **Paint** tab → choose the `move_cost` custom
-data layer to view or change costs per tile (grass = 1, forest = 2).
-Adding a brand-new terrain type is: add its art to
-`assets/base_tiles.png`, add the tile in the TileSet editor, set its
-`move_cost` — no code.
+Every tile names its terrain (a `terrain` custom data string on the
+shared TileSet: "plains", "forest"; "mountain" is reserved). What that
+terrain *costs* depends on the moving unit's class: classes belong to
+movement groups (infantry / mounted / magic / flying) and each group
+has its own price table — infantry crosses forest for 2, cavalry pays
+3, so a 7-move cavalier clears two forests and a plain but not three
+forests. All of it lives in one balance file, `scripts/class_stats.gd`
+(`MOVE_COSTS` for the group price tables, `move_type` on each class),
+safe to edit freely: unknown terrain names cost 1, and `IMPASSABLE`
+prices a terrain out entirely for a group (mounted vs mountains).
+Adding a new terrain type is: add its art and tile, set the tile's
+`terrain` string, and add a column to the `MOVE_COSTS` rows.
 
 ### Placing and moving units
 

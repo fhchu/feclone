@@ -265,13 +265,16 @@ func _register_placed_units() -> void:
 func _in_bounds(cell: Vector2i) -> bool:
     return ground.get_cell_source_id(cell) != -1
 
-## Movement cost to enter a cell, read from the TileSet's "move_cost"
-## custom data — so new terrain types are a TileSet edit, not a code change.
-func _terrain_cost(cell: Vector2i) -> int:
+## Movement cost for THIS unit to enter a cell: the tile names its
+## terrain (TileSet "terrain" custom data) and the unit's movement
+## group prices it — all the numbers live in ClassStats.MOVE_COSTS,
+## so cavalry pays 3 for the forest an infantry unit crosses for 2.
+func _terrain_cost(cell: Vector2i, unit: Area2D) -> int:
     var data : TileData = ground.get_cell_tile_data(cell)
     if data == null:
         return 1
-    return data.get_custom_data("move_cost")
+    var terrain : String = data.get_custom_data("terrain")
+    return ClassStats.terrain_cost(unit.unit_class, terrain)
 
 # ── Movement range (replaces ChessRules.get_legal_moves) ──────────────────────
 
@@ -292,7 +295,7 @@ func _get_reach_costs(unit, max_cost: int = -1) -> Dictionary:
                 continue
             if unit_map.has(nxt) and unit_map[nxt] != unit:
                 continue  # later: allies passable but not stoppable, enemies block
-            var cost : int = costs[cur] + _terrain_cost(nxt)
+            var cost : int = costs[cur] + _terrain_cost(nxt, unit)
             if cost > limit:
                 continue
             if costs.has(nxt) and costs[nxt] <= cost:
@@ -944,19 +947,21 @@ func _move_unit(unit: Area2D, to_cell: Vector2i) -> void:
 ## Reconstructs the cheapest path from the unit to target (start cell
 ## included) within its move range.
 func _build_path(unit: Area2D, target: Vector2i) -> Array:
-    return _build_path_through(_get_reach_costs(unit), unit.cell, target)
+    return _build_path_through(_get_reach_costs(unit), unit.cell, target, unit)
 
 ## Path reconstruction over any cost field, by descending it: each step
 ## back goes to a neighbour whose cost is exactly this cell's cost minus
-## its terrain cost — such a neighbour always exists on an optimal field.
-func _build_path_through(costs: Dictionary, start: Vector2i, target: Vector2i) -> Array:
+## its terrain cost (for the pathing unit — costs are per movement
+## group) — such a neighbour always exists on an optimal field.
+func _build_path_through(costs: Dictionary, start: Vector2i, target: Vector2i,
+        unit: Area2D) -> Array:
     var path : Array    = [target]
     var cur  : Vector2i = target
     while cur != start:
         var stepped : bool = false
         for dir in ORTHO_DIRS:
             var prev : Vector2i = cur + dir
-            if costs.has(prev) and costs[prev] == costs[cur] - _terrain_cost(cur):
+            if costs.has(prev) and costs[prev] == costs[cur] - _terrain_cost(cur, unit):
                 cur     = prev
                 stepped = true
                 break

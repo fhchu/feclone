@@ -79,11 +79,11 @@ static func _advance_toward_nearest(unit: Area2D, board: Node2D) -> Dictionary:
     if best_launch == null or best_launch == unit.cell:
         return PASS
     # Walk the ideal path and stop at the last cell this turn affords.
-    var path   : Array    = board._build_path_through(full, unit.cell, best_launch)
+    var path   : Array    = board._build_path_through(full, unit.cell, best_launch, unit)
     var budget : int      = unit.move_range
     var dest   : Vector2i = unit.cell
     for i in range(1, path.size()):
-        budget -= board._terrain_cost(path[i])
+        budget -= board._terrain_cost(path[i], unit)
         if budget < 0:
             break
         dest = path[i]
