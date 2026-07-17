@@ -10,3 +10,8 @@ extends Node2D
 ## scripts/loss_conditions.gd; any one of them triggering loses the
 ## level. Several can be listed at once.
 @export var loss_conditions : Array[String] = ["all_units_dead"]
+
+## Background music while this level runs (looping). Leave empty for the
+## shared default battle theme — set it only when a level wants its own
+## song (a desert map's theme, say). Drag any imported audio file in.
+@export var music : AudioStream = null

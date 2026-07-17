@@ -28,6 +28,10 @@ list on the Main node names them (just `all_units_dead` for now; things
 like `lord_dies` come later — see `scripts/loss_conditions.gd`). A
 level can stack several; any one of them ends it.
 
+Every level loops the shared battle theme. To give a map its own song
+(a desert theme, say), drop an audio file into the **Music** slot on
+the level scene's root node — empty means the default.
+
 Everything below happens in the Godot editor, inside a level scene.
 
 ### Painting terrain
@@ -174,6 +178,11 @@ and menus need no wiring. To silence a specific button, give it a
 Combat plays a slash as each blow lands — the strike and, if the
 defender survives, the counterattack.
 
+Music: `assets/battle.wav` loops throughout every level (restarts and
+same-song level changes don't interrupt it). A level's **Music**
+export overrides the track; the loop point is baked into the wav
+import settings.
+
 ### Unit info
 
 Hovering any unit (either team) shows a neutral greyscale card in the
@@ -213,3 +222,9 @@ The Godot binary (Steam install):
 ```
 "/Users/felicity/Library/Application Support/Steam/steamapps/common/Godot Engine/Godot.app/Contents/MacOS/Godot" --headless --path . --quit-after 10
 ```
+
+A headless run that played any audio (which now includes every boot,
+since level music starts immediately) ends with `ObjectDB instances
+were leaked` / `resources still in use` warnings naming the audio
+streams. That's a headless-only artifact: the dummy audio driver never
+runs the mix pass that releases playbacks. Windowed runs exit clean.

@@ -177,6 +177,9 @@ func _ready() -> void:
     _slash_player.stream = SLASH_SFX
     _slash_player.max_polyphony = 4  # rapid blows layer instead of cutting off
     add_child(_slash_player)
+    _music_player = AudioStreamPlayer.new()
+    _music_player.volume_db = MUSIC_DB
+    add_child(_music_player)
     undo_button.pressed.connect(_open_history)
     history_confirm.pressed.connect(_on_history_confirm)
     history_panel.get_node("VBoxContainer/Buttons/CancelButton").pressed.connect(_on_history_cancel)
@@ -233,6 +236,7 @@ func _load_level(path: String) -> void:
     ground          = level.get_node("Ground")
     units_node      = level.get_node("Units")
     loss_conditions = level.loss_conditions
+    _play_music(level.music if level.music != null else DEFAULT_MUSIC)
     overlay.position      = ground.position  # the map decides where it sits
     danger_layer.position = ground.position
     _update_camera_bounds()
@@ -1088,6 +1092,27 @@ func _team_wiped(team: String) -> bool:
         if unit.team == team and unit.visible:
             return false
     return true
+
+# ── Music ──────────────────────────────────────────────────────────────────────
+# One looping track while a level runs. Levels pick their song via the
+# `music` export on the Level root (empty = the default battle theme),
+# so a desert map can swap in its own in the Inspector with no code.
+# _play_music is a no-op when the incoming level reuses the playing
+# track, so restarts and same-song progression never skip a beat; the
+# loop itself is baked at import (edit/loop_mode=2 = Forward in
+# battle.wav.import — NB the importer's enum is offset from the
+# stream's: import 2 = AudioStreamWAV.LOOP_FORWARD).
+
+const DEFAULT_MUSIC : AudioStream = preload("res://assets/battle.wav")
+const MUSIC_DB      : float       = -6.0  # sits under the sfx
+
+var _music_player : AudioStreamPlayer  # created in _ready
+
+func _play_music(track: AudioStream) -> void:
+    if _music_player.stream == track and _music_player.playing:
+        return
+    _music_player.stream = track
+    _music_player.play()
 
 # ── Level flow ─────────────────────────────────────────────────────────────────
 
