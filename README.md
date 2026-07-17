@@ -163,6 +163,14 @@ To speed the whole game up, select the **Main** node and raise
 **Animation Speed** in the Inspector — 1.5 or 2.0 fast-forwards walking,
 combat, banners, and enemy pacing uniformly. It ships at 1.0.
 
+### Sound
+
+Every UI button plays the shared select sound when clicked. This is
+automatic: a global watcher (`scripts/ui_sfx.gd`, autoloaded as
+`UiSfx`) hooks each button as it enters the scene tree, so new buttons
+and menus need no wiring. To silence a specific button, give it a
+`no_click_sfx` metadata entry in the Inspector.
+
 ### Unit info
 
 Hovering any unit (either team) shows a neutral greyscale card in the
