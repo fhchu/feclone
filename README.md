@@ -190,7 +190,7 @@ into danger tracking: the unit tints dark red and every tile any
 tracked enemy could strike is shaded translucent grey, outlined in red
 along the outer boundary only — toggling more enemies merges their
 zones into one outline. The **Danger Zone** checkbox (bottom-right, stacked above
-the Settings button; shows an × when on) displays every enemy's
+the Settings button) displays every enemy's
 combined zone at once without tinting anyone, and stays on across
 levels; individual tracking works on top of it. Zones update live as
 units move or fall.

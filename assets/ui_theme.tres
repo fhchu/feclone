@@ -1,8 +1,5 @@
 [gd_resource type="Theme" format=3 uid="uid://cuith3m3feqav"]
 
-[ext_resource type="Texture2D" path="res://assets/check_on.png" id="1_on"]
-[ext_resource type="Texture2D" path="res://assets/check_off.png" id="2_off"]
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 10.0
 content_margin_top = 10.0
@@ -83,7 +80,16 @@ corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_flat"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_check_bg"]
+content_margin_left = 2.0
+content_margin_top = 2.0
+content_margin_right = 2.0
+content_margin_bottom = 2.0
+bg_color = Color(0.78, 0.83, 0.95, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
 
 [resource]
 Button/styles/disabled = SubResource("StyleBoxFlat_btn_disabled")
@@ -91,11 +97,9 @@ Button/styles/hover = SubResource("StyleBoxFlat_btn_hover")
 Button/styles/hover_pressed = SubResource("StyleBoxFlat_btn_pressed")
 Button/styles/normal = SubResource("StyleBoxFlat_btn_normal")
 Button/styles/pressed = SubResource("StyleBoxFlat_btn_pressed")
-CheckBox/icons/checked = ExtResource("1_on")
-CheckBox/icons/unchecked = ExtResource("2_off")
-CheckBox/styles/disabled = SubResource("StyleBoxEmpty_flat")
-CheckBox/styles/hover = SubResource("StyleBoxEmpty_flat")
-CheckBox/styles/hover_pressed = SubResource("StyleBoxEmpty_flat")
-CheckBox/styles/normal = SubResource("StyleBoxEmpty_flat")
-CheckBox/styles/pressed = SubResource("StyleBoxEmpty_flat")
+CheckBox/styles/disabled = SubResource("StyleBoxFlat_check_bg")
+CheckBox/styles/hover = SubResource("StyleBoxFlat_check_bg")
+CheckBox/styles/hover_pressed = SubResource("StyleBoxFlat_check_bg")
+CheckBox/styles/normal = SubResource("StyleBoxFlat_check_bg")
+CheckBox/styles/pressed = SubResource("StyleBoxFlat_check_bg")
 PanelContainer/styles/panel = SubResource("StyleBoxFlat_panel")
