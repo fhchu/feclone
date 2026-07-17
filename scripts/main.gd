@@ -173,6 +173,10 @@ var turn_number : int   = 0
 func _ready() -> void:
     overlay.overlay_alpha = 0.5
     info_portrait.texture = AtlasTexture.new()
+    _slash_player = AudioStreamPlayer.new()
+    _slash_player.stream = SLASH_SFX
+    _slash_player.max_polyphony = 4  # rapid blows layer instead of cutting off
+    add_child(_slash_player)
     undo_button.pressed.connect(_open_history)
     history_confirm.pressed.connect(_on_history_confirm)
     history_panel.get_node("VBoxContainer/Buttons/CancelButton").pressed.connect(_on_history_cancel)
@@ -1007,14 +1011,22 @@ func _move_unit_walking(unit: Area2D, target: Vector2i) -> void:
 
 const BUMP_TIME     : float = 0.12  # seconds each way
 const BUMP_DISTANCE : float = 0.45  # fraction of the way into the target's cell
+const SLASH_SFX     : AudioStream = preload("res://assets/slash.wav")
 
 var _combat_active : bool = false   # input is ignored while the bumps play
+var _slash_player  : AudioStreamPlayer  # created in _ready
 
 ## Fired when an engagement fully resolves; _run_enemy_phase awaits it.
 signal combat_finished
 
 func _attack_damage(_attacker, _defender) -> int:
     return 1  # flat subtraction for now
+
+## A blow landing at the bump's apex: the slash sound plus the damage.
+## Future impact effects (crit flashes, hit sparks) belong here too.
+func _strike(target: Area2D, dmg: int) -> void:
+    _slash_player.play()
+    target.take_damage(dmg)
 
 ## push_snapshot is false when the attacker's approach move already
 ## pushed one (the menu flow) — move + attack stay a single undo step.
@@ -1038,7 +1050,7 @@ func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
     tw.tween_callback(func() -> void: attacker.z_index = 10)
     tw.tween_property(attacker, "global_position",
             atk_home.lerp(def_home, BUMP_DISTANCE), _anim(BUMP_TIME))
-    tw.tween_callback(func() -> void: defender.take_damage(atk_dmg))
+    tw.tween_callback(_strike.bind(defender, atk_dmg))
     tw.tween_property(attacker, "global_position", atk_home, _anim(BUMP_TIME))
     tw.tween_callback(func() -> void: attacker.z_index = 1)
 
@@ -1047,7 +1059,7 @@ func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
         tw.tween_callback(func() -> void: defender.z_index = 10)
         tw.tween_property(defender, "global_position",
                 def_home.lerp(atk_home, BUMP_DISTANCE), _anim(BUMP_TIME))
-        tw.tween_callback(func() -> void: attacker.take_damage(def_dmg))
+        tw.tween_callback(_strike.bind(attacker, def_dmg))
         tw.tween_property(defender, "global_position", def_home, _anim(BUMP_TIME))
         tw.tween_callback(func() -> void: defender.z_index = 1)
 

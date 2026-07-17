@@ -171,6 +171,9 @@ automatic: a global watcher (`scripts/ui_sfx.gd`, autoloaded as
 and menus need no wiring. To silence a specific button, give it a
 `no_click_sfx` metadata entry in the Inspector.
 
+Combat plays a slash as each blow lands — the strike and, if the
+defender survives, the counterattack.
+
 ### Unit info
 
 Hovering any unit (either team) shows a neutral greyscale card in the
