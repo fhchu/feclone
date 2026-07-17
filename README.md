@@ -150,9 +150,10 @@ stays hard-edged via nearest-neighbour filtering (pixel-perfect at
 integer scales: 1280, 1920, 2560…).
 
 One screen shows exactly a 10×10 map — the minimum map size, filling
-the view with no border. Bigger maps scroll: moving the mouse into the
-outermost two tiles of the screen pans the camera (the mouse stands in
-for the cursor), clamped to the map's edges. Maps should start at the
+the view with no border. Bigger maps scroll: pressing the mouse
+against the screen edge pans the camera (the mouse stands in for the
+cursor), clamped to the map's edges; the corner buttons sit outside
+the thin scroll band, so reaching them never moves the view. Maps should start at the
 scene origin and be at least 10 tiles on each axis.
 
 ### Pacing

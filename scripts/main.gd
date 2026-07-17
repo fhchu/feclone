@@ -8,9 +8,10 @@
 #   captures → melee combat, and the same undo-snapshot pattern.
 #
 # Levels are authored entirely in the editor — no code changes needed:
-#   • Terrain: paint the level's Ground TileMapLayer. Movement cost is
-#     the shared TileSet's "move_cost" custom data (grass 1, forest 2;
-#     assets/ground_tiles.tres). Unpainted cells are off the map.
+#   • Terrain: paint the level's Ground TileMapLayer. Tiles name their
+#     terrain ("terrain" custom data on assets/ground_tiles.tres) and
+#     ClassStats.MOVE_COSTS prices it per movement group. Unpainted
+#     cells are off the map.
 #   • Units:   instance unit.tscn under the level's Units node and set
 #     class/team/max hp in the Inspector.
 #   • Metadata: loss_conditions etc. are exports on the Level root.
@@ -21,7 +22,6 @@ extends Node2D
 @onready var level_holder : Node2D         = $LevelHolder
 @onready var overlay      : TileMapLayer   = $Overlay
 @onready var camera       : Camera2D       = $GameCamera
-@onready var turn_label   : Label          = $UI/TurnLabel
 @onready var undo_button  : Button         = $UI/UndoButton
 @onready var phase_banner : PanelContainer = $UI/PhaseBanner
 @onready var banner_label : Label          = $UI/PhaseBanner/BannerLabel
@@ -68,15 +68,15 @@ const ENEMY_TEAM  : String = "red"
 const ORTHO_DIRS : Array = [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]
 
 # ── Camera ─────────────────────────────────────────────────────────────────────
-# Edge scrolling: the mouse standing in the outermost two tiles of the
-# screen pans the view (the mouse plays the role a cursor will have),
-# clamped so the camera never shows past the map. Minimum-size maps
-# (10×10 — exactly one screen) collapse the clamp range and never
-# scroll. Paused while input is locked so mousing to menus and panels
-# doesn't drag the view around.
+# Edge scrolling: the mouse pressed against the screen edge pans the
+# view (the mouse plays the role a cursor will have), clamped so the
+# camera never shows past the map. The band is a thin 8px — the same
+# inset the corner UI sits at — so reaching for buttons never drags
+# the view. Minimum-size maps (10×10 — exactly one screen) collapse
+# the clamp range and never scroll. Paused while input is locked.
 
-const EDGE_SCROLL_TILES : float = 2.0    # edge zone width, in tiles
-const EDGE_SCROLL_SPEED : float = 520.0  # pixels per second
+const EDGE_SCROLL_MARGIN : float = 8.0    # edge band width, in pixels
+const EDGE_SCROLL_SPEED  : float = 520.0  # pixels per second
 
 var _cam_min : Vector2 = Vector2.ZERO  # clamp range for the camera centre
 var _cam_max : Vector2 = Vector2.ZERO
@@ -90,7 +90,7 @@ func _tick_camera(mouse_pos: Vector2, delta: float) -> void:
     if level == null or _input_locked():
         return
     var vp     : Vector2 = get_viewport().get_visible_rect().size
-    var margin : float   = EDGE_SCROLL_TILES * 64.0
+    var margin : float   = EDGE_SCROLL_MARGIN
     var dir    : Vector2 = Vector2.ZERO
     if mouse_pos.x < margin:
         dir.x -= 1.0
@@ -377,7 +377,6 @@ func _start_phase(team: String) -> void:
         undo_stack.append(_capture_snapshot("Turn %d" % turn_number, "turn"))
         undo_button.disabled = false
     var title : String = "Player Phase" if team == PLAYER_TEAM else "Enemy Phase"
-    turn_label.text = title
     _show_banner(title, BANNER_COLORS[team])
 
 func _show_banner(title: String, team_color: Color) -> void:
@@ -1092,7 +1091,6 @@ var _game_over     : bool = false
 func _level_cleared() -> void:
     _level_over = true
     _deselect()
-    turn_label.text = "Victory!"
     var gen : int = _level_generation
     await get_tree().create_timer(_anim(LEVEL_CLEAR_DELAY)).timeout
     if gen != _level_generation:
@@ -1111,7 +1109,6 @@ func _show_game_over() -> void:
     _game_over      = true
     _phase_changing = false
     _deselect()
-    turn_label.text = "Game Over"
     var gen : int = _level_generation
     await get_tree().create_timer(_anim(GAME_OVER_DELAY)).timeout
     if gen != _level_generation:
@@ -1306,5 +1303,4 @@ func _restore_snapshot(snap: Dictionary) -> void:
 
     current_team    = snap["team"]
     turn_number     = snap["turn"]
-    turn_label.text = "Player Phase" if current_team == PLAYER_TEAM else "Enemy Phase"
     _refresh_danger()  # restored board; tracked zones follow it
