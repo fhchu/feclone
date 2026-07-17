@@ -215,6 +215,23 @@ counterattacks if it survived. Damage is a flat 1 for now — weapons and
 rpg stats (def/crit/…) come later, as does a weapon-choice menu before
 the strike. Undo reverts a whole engagement, including deaths.
 
+### Items
+
+Units can carry up to five items. When a unit with any opens its action
+menu, an **Items** entry sits between Attack and Wait; it swaps the menu
+for the item list (a shorter panel when fewer are carried). The × — or
+clicking anywhere outside — returns to the action menu with nothing
+spent. Using an item takes the unit's turn, and undo returns both the
+charge and its effect. Items carry limited uses, shown on their button
+("Potion 2/3"); spending the last one removes the item. Levels
+re-instance their units, so charges reset every level. Healing items
+grey out at full health. One item exists so far: the **Potion** —
+heals 10 (capped at max hp), three uses per level.
+
+To give a unit items: select it in a level scene and add item ids to
+its **Inventory** array in the Inspector. Ids, effects, and use counts
+live in `scripts/items.gd` — new items are new entries in that table.
+
 ## Running headless checks
 
 The Godot binary (Steam install):

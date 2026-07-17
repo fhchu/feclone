@@ -18,6 +18,7 @@ tile_set = ExtResource("2_tiles")
 position = Vector2(160, 480)
 sprite_variant = "female"
 character_name = "Alex"
+inventory = Array[String](["potion"])
 
 [node name="Enemy1" parent="Units" unique_id=1210202714 instance=ExtResource("5_unit")]
 position = Vector2(416, 224)

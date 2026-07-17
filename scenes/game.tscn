@@ -150,11 +150,46 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Attack"
 
+[node name="ItemsButton" type="Button" parent="UI/ActionMenu/VBoxContainer"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Items"
+
 [node name="WaitButton" type="Button" parent="UI/ActionMenu/VBoxContainer"]
 custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Wait"
+
+[node name="ItemsPanel" type="PanelContainer" parent="UI"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/ItemsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="UI/ItemsPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="UI/ItemsPanel/VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+text = "Items"
+
+[node name="CloseButton" type="Button" parent="UI/ItemsPanel/VBoxContainer/Header"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "×"
 
 [node name="ForecastPanel" type="PanelContainer" parent="UI"]
 visible = false

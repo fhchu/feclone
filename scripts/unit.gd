@@ -59,6 +59,20 @@ var move_range : int:
         hp = value  # editor shows a full bar; runtime starts at full health
         queue_redraw()
 
+## Item ids this unit carries (definitions in scripts/items.gd). The
+## items menu lists them in order and shows at most Items.MAX_SLOTS.
+@export var inventory : Array[String] = []
+
+## Charges left per inventory slot, parallel to `inventory` — runtime
+## state, filled from the item definitions when main.gd registers the
+## unit (levels re-instance their units, so charges reset per level).
+var inventory_uses : Array[int] = []
+
+func init_inventory_uses() -> void:
+    inventory_uses = []
+    for id in inventory:
+        inventory_uses.append(Items.max_uses(id))
+
 # Which EnemyAI strategies drive this unit while it's on the enemy team
 # (ignored for player units) — see scripts/enemy_ai.gd. The dropdowns
 # grow as new behaviours land (thieves, bosses, reinforcements…).
@@ -249,6 +263,12 @@ func set_danger_marked(marked: bool) -> void:
 func take_damage(amount: int) -> void:
     hp = clampi(hp - amount, 0, max_hp)
     queue_redraw()
+
+## Restores health (capped at max_hp) and refreshes the bar; healing
+## beyond the missing amount is simply lost. main.gd applies the amounts
+## (item and staff effects live there, like damage does).
+func heal(amount: int) -> void:
+    take_damage(-amount)  # take_damage's clamp handles the ceiling
 
 ## Hides the unit without freeing it — used for defeats so undo can bring
 ## it back by restoring its snapshotted properties.

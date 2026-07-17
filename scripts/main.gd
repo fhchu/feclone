@@ -28,6 +28,10 @@ extends Node2D
 @onready var action_menu     : PanelContainer = $UI/ActionMenu
 @onready var attack_button   : Button         = $UI/ActionMenu/VBoxContainer/AttackButton
 @onready var wait_button     : Button         = $UI/ActionMenu/VBoxContainer/WaitButton
+@onready var items_button    : Button         = $UI/ActionMenu/VBoxContainer/ItemsButton
+@onready var items_panel     : PanelContainer = $UI/ItemsPanel
+@onready var items_vbox      : VBoxContainer  = $UI/ItemsPanel/VBoxContainer
+@onready var items_close     : Button         = $UI/ItemsPanel/VBoxContainer/Header/CloseButton
 @onready var map_menu          : PanelContainer = $UI/MapMenu
 @onready var danger_layer      : Node2D         = $DangerLayer
 @onready var danger_zone_check : CheckBox       = $UI/CornerButtons/DangerPanel/DangerRow/DangerZoneCheck
@@ -152,6 +156,7 @@ var attack_targets      : Dictionary = {}    # enemy cell → cell to attack fro
 var _pending_unit           : Variant    = null   # Area2D awaiting a menu decision
 var _pending_snapshot_taken : bool       = false  # its move already pushed an undo snapshot
 var _menu_open              : bool       = false  # action menu is showing (modal)
+var _items_open             : bool       = false  # items panel is showing (modal, reached from the action menu)
 var _targeting              : bool       = false  # picking an attack target
 var _targetable             : Dictionary = {}     # enemy cell → true while targeting
 var _forecast_target        : Variant    = null   # cell whose forecast is up; next click commits
@@ -185,6 +190,8 @@ func _ready() -> void:
     history_panel.get_node("VBoxContainer/Buttons/CancelButton").pressed.connect(_on_history_cancel)
     attack_button.pressed.connect(_on_attack_pressed)
     wait_button.pressed.connect(_on_wait_pressed)
+    items_button.pressed.connect(_on_items_pressed)
+    items_close.pressed.connect(_close_items_menu)
     map_menu.get_node("VBoxContainer/EndTurnButton").pressed.connect(_on_end_turn_pressed)
     danger_zone_check.toggled.connect(_on_danger_all_toggled)
     settings_button.pressed.connect(_on_settings_pressed)
@@ -259,6 +266,7 @@ func _register_placed_units() -> void:
             push_warning("Units '%s' and '%s' share cell %s." %
                     [unit_map[cell].name, unit.name, cell])
         unit.move_to(cell, overlay.cell_center_world(cell))
+        unit.init_inventory_uses()
         unit.connect("drag_started",   _on_drag_started)
         unit.connect("drag_moved",     _on_drag_moved)
         unit.connect("drop_attempted", _on_drop_attempted)
@@ -366,7 +374,8 @@ var _phase_changing : bool   = false   # input is ignored while banners play
 func _input_locked() -> bool:
     return _combat_active or _phase_changing or _walking \
             or _settings_open or _level_over or _game_over \
-            or _menu_open or _targeting or _history_open or _map_menu_open
+            or _menu_open or _items_open or _targeting \
+            or _history_open or _map_menu_open
 
 ## Begins a phase: refreshes every unit (the previous team un-greys, the
 ## new team gets its actions back) and plays the announcement banner.
@@ -585,6 +594,11 @@ func _unhandled_input(event: InputEvent) -> void:
         return
     var cell : Vector2i = overlay.world_to_cell(get_global_mouse_position())
     _menu_cancel_unit = null  # only ever lives for a single press
+    if _items_open:
+        # Outside the items panel = the same as its × button: back to
+        # the action menu, nothing spent.
+        _close_items_menu()
+        return
     if _menu_open:
         # Any press outside the menu panel (its buttons and backing
         # consume their own clicks) aborts the pending action.
@@ -789,6 +803,7 @@ func _open_action_menu(unit: Area2D, snapshot_taken: bool) -> void:
     _pending_snapshot_taken = snapshot_taken
     _menu_open              = true
     attack_button.visible   = not _adjacent_enemies(unit).is_empty()
+    items_button.visible    = not unit.inventory.is_empty()
     action_menu.visible     = true
     # Shrink the panel to its (new) content once the container has
     # re-sorted — fewer options means a shorter menu, same width.
@@ -799,10 +814,12 @@ func _clear_pending() -> void:
     _pending_unit           = null
     _pending_snapshot_taken = false
     _menu_open              = false
+    _items_open             = false
     _targeting              = false
     _targetable             = {}
     _forecast_target        = null
     action_menu.visible     = false
+    items_panel.visible     = false
     forecast_panel.visible  = false
 
 ## Living enemies within weapon reach (melee 1) of the unit's cell.
@@ -936,6 +953,76 @@ func _on_wait_pressed() -> void:
         _set_last_label(label)
     else:
         _push_undo_snapshot(label)
+    _finish_action(unit)
+
+# ── Items menu ─────────────────────────────────────────────────────────────────
+# Reached from the action menu's Items entry (shown only when the unit
+# carries something). The panel lists up to Items.MAX_SLOTS buttons —
+# fewer items make a shorter panel, sized like the action menu. Its ×
+# button and any click outside both return to the action menu with
+# nothing spent; using an item is the unit's action for the turn, ending
+# it like Wait does.
+
+## Items: swap the action menu for this unit's item list.
+func _on_items_pressed() -> void:
+    if _pending_unit == null:
+        return
+    _menu_open          = false
+    action_menu.visible = false
+    _items_open         = true
+    _rebuild_item_list(_pending_unit)
+    items_panel.visible = true
+    items_panel.call_deferred("reset_size")
+
+## Fills the panel with one button per carried item (menu-button style,
+## created fresh each opening — freed and rebuilt so the panel always
+## matches the inventory).
+func _rebuild_item_list(unit: Area2D) -> void:
+    for child in items_vbox.get_children():
+        if child.name != "Header":
+            items_vbox.remove_child(child)
+            child.free()
+    for index in mini(unit.inventory.size(), Items.MAX_SLOTS):
+        var id  : String = unit.inventory[index]
+        var btn : Button = Button.new()
+        btn.text = "%s %d/%d" % [Items.display_name(id),
+                unit.inventory_uses[index], Items.max_uses(id)]
+        btn.disabled = Items.unusable_by(id, unit)  # e.g. healing at full hp
+        btn.custom_minimum_size = Vector2(200, 48)
+        btn.add_theme_font_size_override("font_size", 24)
+        btn.pressed.connect(_on_item_pressed.bind(index))
+        items_vbox.add_child(btn)
+
+## × or a click outside the panel: back to the unit's action menu.
+func _close_items_menu() -> void:
+    _items_open         = false
+    items_panel.visible = false
+    if _pending_unit != null:
+        _open_action_menu(_pending_unit, _pending_snapshot_taken)
+
+## Using an item ends the unit's turn. Effects dispatch on the item's
+## definition keys — only "heal" exists yet; the undo snapshot is taken
+## before anything is consumed, so undo returns charge and health alike.
+## Spending the last charge removes the item from the inventory.
+func _on_item_pressed(index: int) -> void:
+    if _pending_unit == null or not _items_open:
+        return
+    var unit          : Area2D = _pending_unit
+    var have_snapshot : bool   = _pending_snapshot_taken
+    if index >= unit.inventory.size():
+        return
+    var id    : String = unit.inventory[index]
+    var label : String = "%s uses %s" % [unit.display_name(), Items.display_name(id)]
+    _clear_pending()
+    if have_snapshot:
+        _set_last_label(label)
+    else:
+        _push_undo_snapshot(label)
+    unit.inventory_uses[index] -= 1
+    if unit.inventory_uses[index] <= 0:
+        unit.inventory.remove_at(index)
+        unit.inventory_uses.remove_at(index)
+    unit.heal(Items.heal_amount(id))
     _finish_action(unit)
 
 # ── Move application ───────────────────────────────────────────────────────────
@@ -1195,6 +1282,8 @@ func _capture_snapshot(label: String, type: String = "action") -> Dictionary:
             "pickable" : unit.input_pickable,
             "hp"       : unit.hp,
             "acted"    : unit.has_acted,
+            "items"    : unit.inventory.duplicate(),
+            "item_uses": unit.inventory_uses.duplicate(),
         }
     return {
         "unit_states": states,
@@ -1334,6 +1423,8 @@ func _restore_snapshot(snap: Dictionary) -> void:
         unit.input_pickable  = s["pickable"]
         unit.hp              = s["hp"]
         unit.has_acted       = s["acted"]
+        unit.inventory       = s["items"].duplicate()
+        unit.inventory_uses  = s["item_uses"].duplicate()
         unit.queue_redraw()
         if unit.visible:
             unit_map[unit.cell] = unit
