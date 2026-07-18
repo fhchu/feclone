@@ -156,6 +156,12 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Attack"
 
+[node name="SkillsButton" type="Button" parent="UI/ActionMenu/VBoxContainer"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Skills"
+
 [node name="ItemsButton" type="Button" parent="UI/ActionMenu/VBoxContainer"]
 custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
@@ -197,7 +203,36 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "×"
 
-[node name="ItemActionButton" type="Button" parent="UI"]
+[node name="SkillsPanel" type="PanelContainer" parent="UI"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="UI/SkillsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="UI/SkillsPanel/VBoxContainer"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="UI/SkillsPanel/VBoxContainer/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+text = "Skills"
+
+[node name="CloseButton" type="Button" parent="UI/SkillsPanel/VBoxContainer/Header"]
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "×"
+
+[node name="FloatingActionButton" type="Button" parent="UI"]
 visible = false
 custom_minimum_size = Vector2(96, 48)
 theme_override_font_sizes/font_size = 24
@@ -257,11 +292,25 @@ theme_override_font_sizes/font_size = 24
 text = "2"
 horizontal_alignment = 1
 
-[node name="Mt" type="Label" parent="UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values"]
+[node name="MtRow" type="HBoxContainer" parent="UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="Mt" type="Label" parent="UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values/MtRow"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "1"
 horizontal_alignment = 1
+
+[node name="MtMult" type="Label" parent="UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values/MtRow"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.3, 1)
+theme_override_font_sizes/font_size = 20
+text = "×2"
+vertical_alignment = 1
 
 [node name="GreyCol" type="PanelContainer" parent="UI/ForecastPanel/VBoxContainer/Cols"]
 custom_minimum_size = Vector2(74, 0)

@@ -18,13 +18,17 @@ const DEFS : Dictionary = {
     },
     # Weapons carry no "uses" for now — durability is undecided, so the
     # items menu lists them by name alone and nothing consumes charges.
+    # "aptitude" is the weapon's share of the wielder's mana generation
+    # (see the Mana section in main.gd).
     "iron_sword": {
         "name": "Iron Sword",
         "might": 5,
+        "aptitude": 2,
     },
     "iron_lance": {
         "name": "Iron Lance",
         "might": 6,
+        "aptitude": 1,
     },
 }
 
@@ -57,6 +61,11 @@ static func is_weapon(id: String) -> bool:
 ## non-weapons, so callers can pass any id).
 static func might(id: String) -> int:
     return DEFS.get(id, {}).get("might", 0)
+
+## Mana the weapon adds to its wielder's per-blow generation, on top of
+## the unit's own aptitude stat (0 for non-weapons).
+static func aptitude(id: String) -> int:
+    return DEFS.get(id, {}).get("aptitude", 0)
 
 ## Inventory index of the unit's equipped weapon, or -1 when unarmed.
 ## The equipped weapon is the FIRST weapon in the inventory — Equip

@@ -19,6 +19,8 @@ sprite_variant = "female"
 character_name = "Alex"
 max_hp = 20
 attack = 5
+aptitude = 10
+max_mana = 20
 inventory = Array[String](["iron_sword", "potion", "iron_lance"])
 
 [node name="Enemy1" parent="Units" unique_id=1210202714 instance=ExtResource("5_unit")]

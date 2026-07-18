@@ -63,6 +63,14 @@ var move_range : int:
 ## might (see _attack_damage in main.gd), so an unarmed unit deals this.
 @export_range(0, 99) var attack : int = 1
 
+## Mana generated every time this unit strikes or is struck; the
+## equipped weapon's aptitude adds on top (see _mana_gain in main.gd).
+## Stat name is provisional — the mechanic is unique to this game.
+@export_range(0, 99) var aptitude : int = 0
+
+## Ceiling on stored mana; generation past it is simply lost.
+@export_range(0, 99) var max_mana : int = 10
+
 ## Item ids this unit carries (definitions in scripts/items.gd). The
 ## items menu lists them in order and shows at most Items.MAX_SLOTS.
 @export var inventory : Array[String] = []
@@ -88,6 +96,7 @@ func init_inventory_uses() -> void:
 # ── Runtime state ──────────────────────────────────────────────────────────────
 var cell : Vector2i = Vector2i(-1, -1)   # assigned by main.gd on registration
 var hp   : int      = 2                  # kept in sync by the max_hp setter
+var mana : int      = 0                  # builds in combat; levels re-instance units, so each starts at 0
 
 ## True once the unit has taken its action this phase; main.gd resets it
 ## at phase start. The sprite greys out while set.
@@ -273,6 +282,13 @@ func take_damage(amount: int) -> void:
 ## (item and staff effects live there, like damage does).
 func heal(amount: int) -> void:
     take_damage(-amount)  # take_damage's clamp handles the ceiling
+
+## Adds (or, with a negative amount, spends) mana, clamped to
+## [0, max_mana]. main.gd computes the amounts — aptitude totals and
+## skill costs live there, like damage; the future mana bar/readout
+## redraws from here.
+func gain_mana(amount: int) -> void:
+    mana = clampi(mana + amount, 0, max_mana)
 
 ## Hides the unit without freeing it — used for defeats so undo can bring
 ## it back by restoring its snapshotted properties.

@@ -28,11 +28,15 @@ extends Node2D
 @onready var action_menu     : PanelContainer = $UI/ActionMenu
 @onready var attack_button   : Button         = $UI/ActionMenu/VBoxContainer/AttackButton
 @onready var wait_button     : Button         = $UI/ActionMenu/VBoxContainer/WaitButton
+@onready var skills_button   : Button         = $UI/ActionMenu/VBoxContainer/SkillsButton
 @onready var items_button    : Button         = $UI/ActionMenu/VBoxContainer/ItemsButton
 @onready var items_panel     : PanelContainer = $UI/ItemsPanel
 @onready var items_vbox      : VBoxContainer  = $UI/ItemsPanel/VBoxContainer
 @onready var items_close     : Button         = $UI/ItemsPanel/VBoxContainer/Header/CloseButton
-@onready var item_action_button : Button      = $UI/ItemActionButton
+@onready var skills_panel    : PanelContainer = $UI/SkillsPanel
+@onready var skills_vbox     : VBoxContainer  = $UI/SkillsPanel/VBoxContainer
+@onready var skills_close    : Button         = $UI/SkillsPanel/VBoxContainer/Header/CloseButton
+@onready var floating_action_button : Button  = $UI/FloatingActionButton
 @onready var map_menu          : PanelContainer = $UI/MapMenu
 @onready var danger_layer      : Node2D         = $DangerLayer
 @onready var danger_zone_check : CheckBox       = $UI/CornerButtons/DangerPanel/DangerRow/DangerZoneCheck
@@ -51,7 +55,8 @@ extends Node2D
 @onready var fc_atk_weapon    : Label          = $UI/ForecastPanel/VBoxContainer/AtkWeaponBox/AtkWeapon
 @onready var fc_def_weapon    : Label          = $UI/ForecastPanel/VBoxContainer/DefWeaponBox/DefWeapon
 @onready var fc_blue_hp       : Label          = $UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values/Hp
-@onready var fc_blue_mt       : Label          = $UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values/Mt
+@onready var fc_blue_mt       : Label          = $UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values/MtRow/Mt
+@onready var fc_blue_mult     : Label          = $UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values/MtRow/MtMult
 @onready var fc_red_hp        : Label          = $UI/ForecastPanel/VBoxContainer/Cols/RedCol/Values/Hp
 @onready var fc_red_mt        : Label          = $UI/ForecastPanel/VBoxContainer/Cols/RedCol/Values/Mt
 
@@ -161,8 +166,10 @@ var _pending_unit           : Variant    = null   # Area2D awaiting a menu decis
 var _pending_snapshot_taken : bool       = false  # its move already pushed an undo snapshot
 var _menu_open              : bool       = false  # action menu is showing (modal)
 var _items_open             : bool       = false  # items panel is showing (modal, reached from the action menu)
+var _skills_open            : bool       = false  # skills panel is showing (modal, reached from the action menu)
 var _targeting              : bool       = false  # picking an attack target
 var _targetable             : Dictionary = {}     # enemy cell → true while targeting
+var _pending_skill          : String     = ""     # skill driving the targeting ("" = plain attack)
 var _forecast_target        : Variant    = null   # cell whose forecast is up; next click commits
 var _menu_cancel_unit       : Variant    = null   # unit whose menu this press cancelled
 var _map_menu_open          : bool       = false  # End Turn map menu is showing
@@ -196,7 +203,9 @@ func _ready() -> void:
     wait_button.pressed.connect(_on_wait_pressed)
     items_button.pressed.connect(_on_items_pressed)
     items_close.pressed.connect(_close_items_menu)
-    item_action_button.pressed.connect(_on_item_action_pressed)
+    skills_button.pressed.connect(_on_skills_pressed)
+    skills_close.pressed.connect(_close_skills_menu)
+    floating_action_button.pressed.connect(_on_floating_action_pressed)
     map_menu.get_node("VBoxContainer/EndTurnButton").pressed.connect(_on_end_turn_pressed)
     danger_zone_check.toggled.connect(_on_danger_all_toggled)
     settings_button.pressed.connect(_on_settings_pressed)
@@ -379,7 +388,7 @@ var _phase_changing : bool   = false   # input is ignored while banners play
 func _input_locked() -> bool:
     return _combat_active or _phase_changing or _walking \
             or _settings_open or _level_over or _game_over \
-            or _menu_open or _items_open or _targeting \
+            or _menu_open or _items_open or _skills_open or _targeting \
             or _history_open or _map_menu_open
 
 ## Begins a phase: refreshes every unit (the previous team un-greys, the
@@ -604,6 +613,9 @@ func _unhandled_input(event: InputEvent) -> void:
         # the action menu, nothing spent.
         _close_items_menu()
         return
+    if _skills_open:
+        _close_skills_menu()
+        return
     if _menu_open:
         # Any press outside the menu panel (its buttons and backing
         # consume their own clicks) aborts the pending action.
@@ -809,6 +821,7 @@ func _open_action_menu(unit: Area2D, snapshot_taken: bool) -> void:
     _pending_snapshot_taken = snapshot_taken
     _menu_open              = true
     attack_button.visible   = not _adjacent_enemies(unit).is_empty()
+    skills_button.visible   = not ClassStats.skills(unit.unit_class).is_empty()
     items_button.visible    = not unit.inventory.is_empty()
     action_menu.visible     = true
     # Shrink the panel to its (new) content once the container has
@@ -821,13 +834,16 @@ func _clear_pending() -> void:
     _pending_snapshot_taken = false
     _menu_open              = false
     _items_open             = false
+    _skills_open            = false
     _targeting              = false
     _targetable             = {}
+    _pending_skill          = ""
     _forecast_target        = null
     action_menu.visible     = false
     items_panel.visible     = false
+    skills_panel.visible    = false
     forecast_panel.visible  = false
-    item_action_button.visible = false
+    floating_action_button.visible = false
 
 ## Living enemies within weapon reach (melee 1) of the unit's cell.
 func _adjacent_enemies(unit: Area2D) -> Array:
@@ -840,10 +856,21 @@ func _adjacent_enemies(unit: Area2D) -> Array:
 
 ## Attack: hide the menu and mark the enemies in reach for targeting.
 func _on_attack_pressed() -> void:
+    _enter_targeting("")
+
+## Shared entry to target-picking — from Attack ("" = plain attack) or
+## from an attack-type skill, whose id tags the whole loop: the forecast
+## badges the strike count and the commit spends the mana and multiplies
+## the blows. Closes whichever menu launched it.
+func _enter_targeting(skill_id: String) -> void:
     if _pending_unit == null:
         return
     _menu_open              = false
     action_menu.visible     = false
+    _skills_open            = false
+    skills_panel.visible    = false
+    floating_action_button.visible = false
+    _pending_skill          = skill_id
     _targeting              = true
     _targetable             = {}
     _forecast_target        = null
@@ -859,24 +886,35 @@ func _on_attack_pressed() -> void:
 func _handle_target_click(cell: Vector2i) -> void:
     var unit          : Area2D = _pending_unit
     var have_snapshot : bool   = _pending_snapshot_taken
+    var skill         : String = _pending_skill
     if _targetable.has(cell):
         if _forecast_target == cell:
             var defender : Area2D = unit_map[cell]
             if have_snapshot:
-                _set_last_label("%s attacks %s" % [unit.display_name(), defender.display_name()])
+                _set_last_label(_attack_label(unit, defender, skill))
             _clear_pending()
             overlay.clear_all()
-            _begin_combat(unit, defender, unit.cell, not have_snapshot)
+            _begin_combat(unit, defender, unit.cell, not have_snapshot, skill)
         else:
             _forecast_target = cell
             _show_forecast(unit, unit_map[cell])
     else:
+        # Backing out of targeting drops the skill too — nothing was
+        # spent, so re-entering is free.
         _targeting              = false
         _targetable             = {}
+        _pending_skill          = ""
         _forecast_target        = null
         forecast_panel.visible  = false
         overlay.clear_range()
         _open_action_menu(unit, have_snapshot)
+
+## History label for an engagement — names the skill when one drives it.
+func _attack_label(attacker: Area2D, defender: Area2D, skill_id: String) -> String:
+    if skill_id != "":
+        return "%s uses %s on %s" % [attacker.display_name(),
+                Skills.display_name(skill_id), defender.display_name()]
+    return "%s attacks %s" % [attacker.display_name(), defender.display_name()]
 
 ## Direct attack gesture: walk to the launch cell, then enter targeting
 ## with the forecast already up on the chosen enemy — the confirming
@@ -916,6 +954,12 @@ func _show_forecast(attacker: Area2D, defender: Area2D) -> void:
     fc_def_weapon.text = _equipped_weapon_name(defender)
     fc_blue_hp.text    = str(attacker.hp)
     fc_blue_mt.text    = str(_attack_damage(attacker, defender))
+    # A skill-driven attack (Brave Strike) badges the blue Might with
+    # its strike count in yellow; plain attacks hide the badge. Only the
+    # attacker's side ever multiplies — counters stay single.
+    var strikes : int = Skills.strikes(_pending_skill) if _pending_skill != "" else 1
+    fc_blue_mult.visible = strikes > 1
+    fc_blue_mult.text    = "×%d" % strikes
     fc_red_hp.text     = str(defender.hp)
     fc_red_mt.text     = str(_attack_damage(defender, attacker))
     # Side-pick from the attacker's on-SCREEN position (camera-aware):
@@ -984,10 +1028,38 @@ func _on_wait_pressed() -> void:
 # button and any click outside both return to the action menu with
 # nothing spent.
 
-const ITEM_ACTION_GAP : float = 10.0  # panel edge → floating button
+const FLOATING_ACTION_GAP : float = 10.0  # panel edge → floating button
 
 var _item_selected : int   = -1  # row the floating action button is on
 var _item_rows     : Array = []  # row Buttons in list order (for placement)
+
+## Parks the shared floating action button just right of an open panel,
+## vertically centred on the given row, reading the given action. Used
+## by the items and skills menus alike.
+func _place_floating_action(panel: PanelContainer, row: Button, action: String) -> void:
+    floating_action_button.text = action
+    floating_action_button.reset_size()  # width follows the label
+    floating_action_button.global_position = Vector2(
+            panel.global_position.x + panel.size.x + FLOATING_ACTION_GAP,
+            row.global_position.y + (row.size.y - floating_action_button.size.y) / 2.0)
+    floating_action_button.visible = true
+
+## The floating button dispatches on the open panel and its selected
+## row: items — Equip for weapons (free) or Use for consumables (the
+## turn action); skills — activate (free).
+func _on_floating_action_pressed() -> void:
+    if _pending_unit == null:
+        return
+    if _items_open and _item_selected >= 0:
+        var index : int = _item_selected
+        if index >= _pending_unit.inventory.size():
+            return
+        if Items.is_weapon(_pending_unit.inventory[index]):
+            _on_equip_pressed(index)
+        else:
+            _on_item_pressed(index)
+    elif _skills_open and _skill_selected >= 0:
+        _use_skill(_skill_selected)
 
 ## Items: swap the action menu for this unit's item list.
 func _on_items_pressed() -> void:
@@ -1006,9 +1078,9 @@ func _on_items_pressed() -> void:
 ## undecided, so no charge readout); consumables keep their "2/3"; the
 ## equipped weapon is marked (E).
 func _rebuild_item_list(unit: Area2D) -> void:
-    _item_selected             = -1
-    _item_rows                 = []
-    item_action_button.visible = false
+    _item_selected                 = -1
+    _item_rows                     = []
+    floating_action_button.visible = false
     for child in items_vbox.get_children():
         if child.name != "Header":
             # Deferred free: Equip rebuilds from inside a row button's own
@@ -1038,31 +1110,13 @@ func _on_item_row_pressed(index: int) -> void:
     if not _items_open or _pending_unit == null:
         return
     if _item_selected == index:
-        _item_selected             = -1
-        item_action_button.visible = false
+        _item_selected                 = -1
+        floating_action_button.visible = false
         return
     _item_selected = index
-    var id  : String = _pending_unit.inventory[index]
-    var row : Button = _item_rows[index]
-    item_action_button.text = "Equip" if Items.is_weapon(id) else "Use"
-    item_action_button.reset_size()  # width follows the label
-    item_action_button.global_position = Vector2(
-            items_panel.global_position.x + items_panel.size.x + ITEM_ACTION_GAP,
-            row.global_position.y + (row.size.y - item_action_button.size.y) / 2.0)
-    item_action_button.visible = true
-
-## The floating button dispatches on what its row holds: Equip for
-## weapons (free), Use for consumables (the unit's action).
-func _on_item_action_pressed() -> void:
-    if not _items_open or _pending_unit == null or _item_selected < 0:
-        return
-    var index : int = _item_selected
-    if index >= _pending_unit.inventory.size():
-        return
-    if Items.is_weapon(_pending_unit.inventory[index]):
-        _on_equip_pressed(index)
-    else:
-        _on_item_pressed(index)
+    var id : String = _pending_unit.inventory[index]
+    _place_floating_action(items_panel, _item_rows[index],
+            "Equip" if Items.is_weapon(id) else "Use")
 
 ## Equip: move the weapon (and its charges) to the top of the inventory,
 ## where the equipped weapon lives. Free — the items panel stays open and
@@ -1092,9 +1146,9 @@ func _on_equip_pressed(index: int) -> void:
 
 ## × or a click outside the panel: back to the unit's action menu.
 func _close_items_menu() -> void:
-    _items_open                = false
-    items_panel.visible        = false
-    item_action_button.visible = false
+    _items_open                    = false
+    items_panel.visible            = false
+    floating_action_button.visible = false
     if _pending_unit != null:
         _open_action_menu(_pending_unit, _pending_snapshot_taken)
 
@@ -1123,6 +1177,97 @@ func _on_item_pressed(index: int) -> void:
         unit.inventory_uses.remove_at(index)
     unit.heal(Items.heal_amount(id))
     _finish_action(unit)
+
+# ── Skills menu ────────────────────────────────────────────────────────────────
+# Reached from the action menu's Skills entry (shown only for classes
+# that know any — ClassStats "skills", definitions in scripts/skills.gd).
+# Mirrors the items menu: rows list "Brave Strike (10)" with the mana
+# cost and clicking one parks the floating Use button beside the panel.
+# Every known skill is always listed; a row greys out when the unit
+# can't afford it or, for attack-type skills, when nothing is in reach
+# to hit. Use on an attack-type skill enters the same targeting loop as
+# the Attack command, tagged with the skill — the forecast badges the
+# strike count and the mana only leaves when the strike commits, so
+# backing out of targeting costs nothing.
+
+var _skill_selected : int   = -1  # row the floating action button is on
+var _skill_rows     : Array = []  # row Buttons in list order (for placement)
+
+## Skills: swap the action menu for this unit's class skill list.
+func _on_skills_pressed() -> void:
+    if _pending_unit == null:
+        return
+    _menu_open           = false
+    action_menu.visible  = false
+    _skills_open         = true
+    _rebuild_skill_list(_pending_unit)
+    skills_panel.visible = true
+    skills_panel.call_deferred("reset_size")
+
+## Fills the panel with one button per class skill, mana cost in
+## parentheses — same fresh-each-opening pattern as the item list.
+func _rebuild_skill_list(unit: Area2D) -> void:
+    _skill_selected                = -1
+    _skill_rows                    = []
+    floating_action_button.visible = false
+    for child in skills_vbox.get_children():
+        if child.name != "Header":
+            # Deferred free: rebuilt from inside a row button's own
+            # pressed signal (same hazard as Equip).
+            skills_vbox.remove_child(child)
+            child.queue_free()
+    var has_target : bool = not _adjacent_enemies(unit).is_empty()
+    for id in ClassStats.skills(unit.unit_class):
+        var btn : Button = Button.new()
+        btn.text = "%s (%d)" % [Skills.display_name(id), Skills.cost(id)]
+        # Greyed when unaffordable; attack-type skills also need someone
+        # in reach, exactly like the Attack command itself.
+        btn.disabled = Skills.unusable_by(id, unit) \
+                or (Skills.strikes(id) > 1 and not has_target)
+        btn.custom_minimum_size = Vector2(200, 48)
+        btn.add_theme_font_size_override("font_size", 24)
+        btn.pressed.connect(_on_skill_row_pressed.bind(_skill_rows.size()))
+        _skill_rows.append(btn)
+        skills_vbox.add_child(btn)
+
+## Clicking a row toggles the floating Use button beside the panel —
+## selection only, nothing spent yet.
+func _on_skill_row_pressed(index: int) -> void:
+    if not _skills_open or _pending_unit == null:
+        return
+    if _skill_selected == index:
+        _skill_selected                = -1
+        floating_action_button.visible = false
+        return
+    _skill_selected = index
+    _place_floating_action(skills_panel, _skill_rows[index], "Use")
+
+## × or a click outside the panel: back to the unit's action menu.
+func _close_skills_menu() -> void:
+    _skills_open                   = false
+    skills_panel.visible           = false
+    floating_action_button.visible = false
+    if _pending_unit != null:
+        _open_action_menu(_pending_unit, _pending_snapshot_taken)
+
+## Use on a skill row. Effects dispatch on the skill's definition keys —
+## only "strikes" (Brave Strike) exists yet: an attack-type skill, so it
+## enters the Attack targeting loop tagged with the skill id. Nothing is
+## spent here; the commit click inside targeting pays the mana.
+func _use_skill(index: int) -> void:
+    if _pending_unit == null or not _skills_open:
+        return
+    var unit : Area2D = _pending_unit
+    var list : Array  = ClassStats.skills(unit.unit_class)
+    if index >= list.size():
+        return
+    var id : String = list[index]
+    if Skills.unusable_by(id, unit):
+        return
+    if Skills.strikes(id) > 1:
+        if _adjacent_enemies(unit).is_empty():
+            return  # the greyed row already blocks this; guard direct calls
+        _enter_targeting(id)
 
 # ── Move application ───────────────────────────────────────────────────────────
 
@@ -1214,20 +1359,43 @@ func _attack_damage(attacker, _defender) -> int:
     var might    : int = Items.might(attacker.inventory[equipped]) if equipped >= 0 else 0
     return attacker.attack + might  # defender's def subtracts here later
 
-## A blow landing at the bump's apex: the slash sound plus the damage.
-## Future impact effects (crit flashes, hit sparks) belong here too.
-func _strike(target: Area2D, dmg: int) -> void:
+# ── Mana ───────────────────────────────────────────────────────────────────────
+# A mechanic of our own (no Fire Emblem equivalent): every blow that
+# lands feeds mana to BOTH participants — striker and struck alike each
+# gain their own aptitude total. Nothing spends it yet (spells/skills
+# later), and it has no UI yet; it just accumulates over the level.
+
+## Mana a unit generates per blow it deals or receives: its aptitude
+## stat plus its equipped weapon's aptitude — aptitude 1 holding the
+## iron sword (aptitude 2) generates 3 per blow.
+func _mana_gain(unit: Area2D) -> int:
+    var equipped : int = Items.equipped_index(unit)
+    var weapon   : int = Items.aptitude(unit.inventory[equipped]) if equipped >= 0 else 0
+    return unit.aptitude + weapon
+
+## A blow landing at the bump's apex: the slash sound, the damage, and
+## the mana both sides generate from the exchange. Future impact effects
+## (crit flashes, hit sparks) belong here too.
+func _strike(attacker: Area2D, target: Area2D, dmg: int) -> void:
+    if target.hp <= 0:
+        return  # already down mid-sequence (brave overkill) — no blow lands
     _slash_player.play()
     target.take_damage(dmg)
+    attacker.gain_mana(_mana_gain(attacker))
+    target.gain_mana(_mana_gain(target))
 
 ## push_snapshot is false when the attacker's approach move already
 ## pushed one (the menu flow) — move + attack stay a single undo step.
+## skill_id tags a skill-driven engagement (Brave Strike): its mana cost
+## leaves the attacker HERE, after the snapshot, so undoing the attack
+## refunds it, and its strike count multiplies the attacker's blows.
 func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
-        push_snapshot: bool = true) -> void:
+        push_snapshot: bool = true, skill_id: String = "") -> void:
     if push_snapshot:
-        _push_undo_snapshot("%s attacks %s" %
-                [attacker.display_name(), defender.display_name()])
+        _push_undo_snapshot(_attack_label(attacker, defender, skill_id))
     _combat_active = true
+    if skill_id != "":
+        attacker.gain_mana(-Skills.cost(skill_id))
 
     # Walk the approach (or just settle home when attacking in place).
     await _walk_unit(attacker, launch_cell)
@@ -1235,15 +1403,19 @@ func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
     var atk_home : Vector2 = overlay.cell_center_world(attacker.cell)
     var def_home : Vector2 = overlay.cell_center_world(defender.cell)
     var atk_dmg  : int     = _attack_damage(attacker, defender)
-    var counters : bool    = defender.hp > atk_dmg  # the defeated don't counter
+    # Skill strikes land consecutively (GBA-brave order); counters never
+    # multiply, only the attack that carries the skill.
+    var strikes  : int     = Skills.strikes(skill_id) if skill_id != "" else 1
+    var counters : bool    = defender.hp > atk_dmg * strikes  # the defeated don't counter
 
     var tw : Tween = create_tween()
     tw.bind_node(level)
     tw.tween_callback(func() -> void: attacker.z_index = 10)
-    tw.tween_property(attacker, "global_position",
-            atk_home.lerp(def_home, BUMP_DISTANCE), _anim(BUMP_TIME))
-    tw.tween_callback(_strike.bind(defender, atk_dmg))
-    tw.tween_property(attacker, "global_position", atk_home, _anim(BUMP_TIME))
+    for i in strikes:
+        tw.tween_property(attacker, "global_position",
+                atk_home.lerp(def_home, BUMP_DISTANCE), _anim(BUMP_TIME))
+        tw.tween_callback(_strike.bind(attacker, defender, atk_dmg))
+        tw.tween_property(attacker, "global_position", atk_home, _anim(BUMP_TIME))
     tw.tween_callback(func() -> void: attacker.z_index = 1)
 
     if counters:
@@ -1251,7 +1423,7 @@ func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
         tw.tween_callback(func() -> void: defender.z_index = 10)
         tw.tween_property(defender, "global_position",
                 def_home.lerp(atk_home, BUMP_DISTANCE), _anim(BUMP_TIME))
-        tw.tween_callback(_strike.bind(attacker, def_dmg))
+        tw.tween_callback(_strike.bind(defender, attacker, def_dmg))
         tw.tween_property(defender, "global_position", def_home, _anim(BUMP_TIME))
         tw.tween_callback(func() -> void: defender.z_index = 1)
 
@@ -1382,6 +1554,7 @@ func _capture_snapshot(label: String, type: String = "action") -> Dictionary:
             "visible"  : unit.visible,
             "pickable" : unit.input_pickable,
             "hp"       : unit.hp,
+            "mana"     : unit.mana,
             "acted"    : unit.has_acted,
             "items"    : unit.inventory.duplicate(),
             "item_uses": unit.inventory_uses.duplicate(),
@@ -1523,6 +1696,7 @@ func _restore_snapshot(snap: Dictionary) -> void:
         unit.visible         = s["visible"]
         unit.input_pickable  = s["pickable"]
         unit.hp              = s["hp"]
+        unit.mana            = s["mana"]
         unit.has_acted       = s["acted"]
         unit.inventory       = s["items"].duplicate()
         unit.inventory_uses  = s["item_uses"].duplicate()

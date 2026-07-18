@@ -27,8 +27,11 @@ const MOVE_COSTS : Dictionary = {
 # "sprites" maps variant → pieces.png column. Columns can be shared
 # between classes (soldier borrows the pawn art until it gets its own)
 # and a class can offer several variants (the lord's male/female pair).
+# "skills" lists the class's skill ids (scripts/skills.gd); omitted
+# means the class has none.
 const STATS : Dictionary = {
-    "lord":     {"mov": 5, "move_type": "infantry", "sprites": {"male": 0, "female": 1}},
+    "lord":     {"mov": 5, "move_type": "infantry", "sprites": {"male": 0, "female": 1},
+            "skills": ["brave_strike"]},
     "cleric":   {"mov": 5, "move_type": "magic",    "sprites": {"male": 2}},   # placeholder class
     "cavalier": {"mov": 7, "move_type": "mounted",  "sprites": {"male": 3}},
     "knight":   {"mov": 4, "move_type": "infantry", "sprites": {"male": 4}},
@@ -47,6 +50,11 @@ static func move_type(unit_class: String) -> String:
 ## What this class pays to enter the named terrain.
 static func terrain_cost(unit_class: String, terrain: String) -> int:
     return MOVE_COSTS[move_type(unit_class)].get(terrain, 1)
+
+## Skill ids a class knows (definitions in scripts/skills.gd); most
+## classes have none yet.
+static func skills(unit_class: String) -> Array:
+    return STATS[unit_class].get("skills", [])
 
 ## Sprite-sheet column for a class. Classes without the requested
 ## variant fall back to their first sprite.
