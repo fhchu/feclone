@@ -47,6 +47,8 @@ extends Node2D
 @onready var forecast_panel   : PanelContainer = $UI/ForecastPanel
 @onready var fc_atk_name      : Label          = $UI/ForecastPanel/VBoxContainer/AtkNameBox/AtkName
 @onready var fc_def_name      : Label          = $UI/ForecastPanel/VBoxContainer/DefNameBox/DefName
+@onready var fc_atk_weapon    : Label          = $UI/ForecastPanel/VBoxContainer/AtkWeaponBox/AtkWeapon
+@onready var fc_def_weapon    : Label          = $UI/ForecastPanel/VBoxContainer/DefWeaponBox/DefWeapon
 @onready var fc_blue_hp       : Label          = $UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values/Hp
 @onready var fc_blue_mt       : Label          = $UI/ForecastPanel/VBoxContainer/Cols/BlueCol/Values/Mt
 @onready var fc_red_hp        : Label          = $UI/ForecastPanel/VBoxContainer/Cols/RedCol/Values/Hp
@@ -892,20 +894,27 @@ func _move_then_forecast(unit: Area2D, launch: Vector2i, target_cell: Vector2i) 
 
 # ── Battle forecast ────────────────────────────────────────────────────────────
 # The pre-combat readout: attacker name in a blue box on top, enemy in
-# a red box below, and three columns between — blue attacker values,
-# grey stat labels (HP / Might; hit and crit later), red defender
-# values. Shown opposite the attacker's half of the map so it never
-# covers the fight.
+# a red box below, each unit's equipped weapon under/over its name, and
+# three columns between — blue attacker values, grey stat labels
+# (HP / Might; hit and crit later), red defender values. Shown opposite
+# the attacker's half of the map so it never covers the fight.
 
 var _forecast_side_left : bool = false
 
+## Display name of the unit's equipped weapon, for the forecast.
+func _equipped_weapon_name(unit: Area2D) -> String:
+    var index : int = Items.equipped_index(unit)
+    return Items.display_name(unit.inventory[index]) if index >= 0 else "Unarmed"
+
 func _show_forecast(attacker: Area2D, defender: Area2D) -> void:
-    fc_atk_name.text = attacker.display_name()
-    fc_def_name.text = defender.display_name()
-    fc_blue_hp.text  = str(attacker.hp)
-    fc_blue_mt.text  = str(_attack_damage(attacker, defender))
-    fc_red_hp.text   = str(defender.hp)
-    fc_red_mt.text   = str(_attack_damage(defender, attacker))
+    fc_atk_name.text   = attacker.display_name()
+    fc_def_name.text   = defender.display_name()
+    fc_atk_weapon.text = _equipped_weapon_name(attacker)
+    fc_def_weapon.text = _equipped_weapon_name(defender)
+    fc_blue_hp.text    = str(attacker.hp)
+    fc_blue_mt.text    = str(_attack_damage(attacker, defender))
+    fc_red_hp.text     = str(defender.hp)
+    fc_red_mt.text     = str(_attack_damage(defender, attacker))
     # Side-pick from the attacker's on-SCREEN position (camera-aware):
     # the panel goes to whichever half the attacker isn't on.
     var screen_x : float = attacker.get_global_transform_with_canvas().origin.x

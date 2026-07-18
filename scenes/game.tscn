@@ -218,6 +218,18 @@ theme_override_font_sizes/font_size = 22
 text = "Lord"
 horizontal_alignment = 1
 
+[node name="AtkWeaponBox" type="PanelContainer" parent="UI/ForecastPanel/VBoxContainer"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_fcblue")
+
+[node name="AtkWeapon" type="Label" parent="UI/ForecastPanel/VBoxContainer/AtkWeaponBox"]
+custom_minimum_size = Vector2(190, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Iron Sword"
+horizontal_alignment = 1
+
 [node name="Cols" type="HBoxContainer" parent="UI/ForecastPanel/VBoxContainer"]
 layout_mode = 2
 mouse_filter = 2
@@ -287,6 +299,18 @@ horizontal_alignment = 1
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "1"
+horizontal_alignment = 1
+
+[node name="DefWeaponBox" type="PanelContainer" parent="UI/ForecastPanel/VBoxContainer"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_fcred")
+
+[node name="DefWeapon" type="Label" parent="UI/ForecastPanel/VBoxContainer/DefWeaponBox"]
+custom_minimum_size = Vector2(190, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Iron Lance"
 horizontal_alignment = 1
 
 [node name="DefNameBox" type="PanelContainer" parent="UI/ForecastPanel/VBoxContainer"]
