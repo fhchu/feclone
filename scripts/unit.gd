@@ -63,13 +63,14 @@ var move_range : int:
 ## might (see _attack_damage in main.gd), so an unarmed unit deals this.
 @export_range(0, 99) var attack : int = 1
 
-## Mana generated every time this unit strikes or is struck; the
-## equipped weapon's aptitude adds on top (see _mana_gain in main.gd).
-## Stat name is provisional — the mechanic is unique to this game.
+## SP (skill points) generated every time this unit strikes or is
+## struck; the equipped weapon's aptitude adds on top (see _sp_gain in
+## main.gd). Stat name is provisional — the mechanic is unique to this
+## game.
 @export_range(0, 99) var aptitude : int = 0
 
-## Ceiling on stored mana; generation past it is simply lost.
-@export_range(0, 99) var max_mana : int = 10
+## Ceiling on stored SP; generation past it is simply lost.
+@export_range(0, 99) var max_sp : int = 10
 
 ## Item ids this unit carries (definitions in scripts/items.gd). The
 ## items menu lists them in order and shows at most Items.MAX_SLOTS.
@@ -96,7 +97,7 @@ func init_inventory_uses() -> void:
 # ── Runtime state ──────────────────────────────────────────────────────────────
 var cell : Vector2i = Vector2i(-1, -1)   # assigned by main.gd on registration
 var hp   : int      = 2                  # kept in sync by the max_hp setter
-var mana : int      = 0                  # builds in combat; levels re-instance units, so each starts at 0
+var sp   : int      = 0                  # skill points; builds in combat, and levels re-instance units so each starts at 0
 
 ## True once the unit has taken its action this phase; main.gd resets it
 ## at phase start. The sprite greys out while set.
@@ -109,7 +110,7 @@ var has_acted : bool = false:
 const ACTED_SATURATION : float = 0.15
 const ACTED_BRIGHTNESS : float = 0.7
 
-# ── Health bar ─────────────────────────────────────────────────────────────────
+# ── Health & SP bars ───────────────────────────────────────────────────────────
 const BAR_SIZE     : Vector2 = Vector2(44, 5)
 const BAR_OFFSET_Y : float   = 24.0  # below the sprite, inside the tile
 const BAR_BORDER   : Color   = Color(0.0, 0.0, 0.0, 0.8)
@@ -118,6 +119,14 @@ const BAR_FILL     : Dictionary = {
     "blue": Color(0.25, 0.55, 1.0),
     "red" : Color(0.95, 0.25, 0.3),
 }
+
+# The SP gauge sits directly under the health bar: black while empty,
+# filling with yellow (the SP colour everywhere — forecast badge, hover
+# card) as blows generate skill points. Same yellow for both teams.
+const SP_BAR_SIZE : Vector2 = Vector2(44, 3)
+const SP_BAR_GAP  : float   = 1.0  # below the hp bar's border
+const SP_EMPTY    : Color   = Color(0.0, 0.0, 0.0)
+const SP_FILL     : Color   = Color(1.0, 0.85, 0.3)
 
 # ── Drag state ─────────────────────────────────────────────────────────────────
 const DRAG_THRESHOLD : float = 6.0  # pixels of mouse travel before a press counts as a drag
@@ -192,8 +201,9 @@ func _refresh_sprite() -> void:
         SPRITE_SIZE
     )
 
-## Draws the health bar under the sprite: dark grey backing for missing
-## health, team-coloured fill for the rest.
+## Draws the health bar under the sprite (dark grey backing for missing
+## health, team-coloured fill) and the SP gauge under it (black backing,
+## yellow fill).
 func _draw() -> void:
     var top_left : Vector2 = Vector2(-BAR_SIZE.x / 2.0, BAR_OFFSET_Y)
     draw_rect(Rect2(top_left - Vector2.ONE, BAR_SIZE + Vector2.ONE * 2.0), BAR_BORDER)
@@ -201,6 +211,13 @@ func _draw() -> void:
     var fill_width : float = BAR_SIZE.x * hp / float(max_hp)
     if fill_width > 0.0:
         draw_rect(Rect2(top_left, Vector2(fill_width, BAR_SIZE.y)), BAR_FILL[team])
+    var sp_top : Vector2 = Vector2(-SP_BAR_SIZE.x / 2.0,
+            BAR_OFFSET_Y + BAR_SIZE.y + 1.0 + SP_BAR_GAP)  # +1: hp bar's border
+    draw_rect(Rect2(sp_top - Vector2.ONE, SP_BAR_SIZE + Vector2.ONE * 2.0), BAR_BORDER)
+    draw_rect(Rect2(sp_top, SP_BAR_SIZE), SP_EMPTY)
+    var sp_width : float = SP_BAR_SIZE.x * sp / float(max_sp) if max_sp > 0 else 0.0
+    if sp_width > 0.0:
+        draw_rect(Rect2(sp_top, Vector2(sp_width, SP_BAR_SIZE.y)), SP_FILL)
 
 func _process(_delta: float) -> void:
     if Engine.is_editor_hint() or not _is_dragging:
@@ -283,12 +300,12 @@ func take_damage(amount: int) -> void:
 func heal(amount: int) -> void:
     take_damage(-amount)  # take_damage's clamp handles the ceiling
 
-## Adds (or, with a negative amount, spends) mana, clamped to
-## [0, max_mana]. main.gd computes the amounts — aptitude totals and
-## skill costs live there, like damage; the future mana bar/readout
-## redraws from here.
-func gain_mana(amount: int) -> void:
-    mana = clampi(mana + amount, 0, max_mana)
+## Adds (or, with a negative amount, spends) SP, clamped to [0, max_sp],
+## and refreshes the SP gauge. main.gd computes the amounts — aptitude
+## totals and skill costs live there, like damage.
+func gain_sp(amount: int) -> void:
+    sp = clampi(sp + amount, 0, max_sp)
+    queue_redraw()
 
 ## Hides the unit without freeing it — used for defeats so undo can bring
 ## it back by restoring its snapshotted properties.

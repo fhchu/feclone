@@ -18,8 +18,8 @@ const DEFS : Dictionary = {
     },
     # Weapons carry no "uses" for now — durability is undecided, so the
     # items menu lists them by name alone and nothing consumes charges.
-    # "aptitude" is the weapon's share of the wielder's mana generation
-    # (see the Mana section in main.gd).
+    # "aptitude" is the weapon's share of the wielder's SP generation
+    # (see the SP section in main.gd).
     "iron_sword": {
         "name": "Iron Sword",
         "might": 5,
@@ -62,7 +62,7 @@ static func is_weapon(id: String) -> bool:
 static func might(id: String) -> int:
     return DEFS.get(id, {}).get("might", 0)
 
-## Mana the weapon adds to its wielder's per-blow generation, on top of
+## SP the weapon adds to its wielder's per-blow generation, on top of
 ## the unit's own aptitude stat (0 for non-weapons).
 static func aptitude(id: String) -> int:
     return DEFS.get(id, {}).get("aptitude", 0)

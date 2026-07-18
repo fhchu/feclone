@@ -48,6 +48,8 @@ extends Node2D
 @onready var info_name        : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/NameLabel
 @onready var info_hp          : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/HpLabel
 @onready var info_bar_fill    : ColorRect      = $UI/UnitInfoPanel/HBoxContainer/Info/HpBarBack/HpBarFill
+@onready var info_sp          : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/SpLabel
+@onready var info_sp_fill     : ColorRect      = $UI/UnitInfoPanel/HBoxContainer/Info/SpBarBack/SpBarFill
 @onready var info_weapon      : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/WeaponLabel
 @onready var forecast_panel   : PanelContainer = $UI/ForecastPanel
 @onready var fc_atk_name      : Label          = $UI/ForecastPanel/VBoxContainer/AtkNameBox/AtkName
@@ -761,9 +763,10 @@ func _refresh_hover_preview() -> void:
 
 # ── Unit info card (hover) ─────────────────────────────────────────────────────
 # A neutral greyscale card in the top-left showing the hovered unit's
-# portrait (sprite for now), name, hp, and equipped weapon. Shown for
-# both teams, only in the idle state: it disappears the moment a unit is
-# selected or any animation/menu owns the screen.
+# portrait (sprite for now), name, hp, sp (yellow bar, like the map
+# gauge), and equipped weapon. Shown for both teams, only in the idle
+# state: it disappears the moment a unit is selected or any
+# animation/menu owns the screen.
 
 var _hovered_unit : Variant = null   # Area2D under the mouse, or null
 
@@ -794,11 +797,15 @@ func _refresh_unit_info() -> void:
     portrait.atlas  = sprite.texture      # portrait art replaces this later
     portrait.region = sprite.region_rect
     info_name.text   = _hovered_unit.display_name()
-    info_hp.text     = "%d / %d" % [_hovered_unit.hp, _hovered_unit.max_hp]
+    info_hp.text     = "HP %d / %d" % [_hovered_unit.hp, _hovered_unit.max_hp]
+    info_sp.text     = "SP %d / %d" % [_hovered_unit.sp, _hovered_unit.max_sp]
     info_weapon.text = _equipped_weapon_name(_hovered_unit)
     info_bar_fill.size = Vector2(
             INFO_BAR_WIDTH * _hovered_unit.hp / float(_hovered_unit.max_hp),
             info_bar_fill.size.y)
+    var sp_frac : float = _hovered_unit.sp / float(_hovered_unit.max_sp) \
+            if _hovered_unit.max_sp > 0 else 0.0
+    info_sp_fill.size = Vector2(INFO_BAR_WIDTH * sp_frac, info_sp_fill.size.y)
     info_panel.visible = true
 
 # ── Action menu (the FE move-then-menu flow) ──────────────────────────────────
@@ -860,7 +867,7 @@ func _on_attack_pressed() -> void:
 
 ## Shared entry to target-picking — from Attack ("" = plain attack) or
 ## from an attack-type skill, whose id tags the whole loop: the forecast
-## badges the strike count and the commit spends the mana and multiplies
+## badges the strike count and the commit spends the SP and multiplies
 ## the blows. Closes whichever menu launched it.
 func _enter_targeting(skill_id: String) -> void:
     if _pending_unit == null:
@@ -1181,13 +1188,13 @@ func _on_item_pressed(index: int) -> void:
 # ── Skills menu ────────────────────────────────────────────────────────────────
 # Reached from the action menu's Skills entry (shown only for classes
 # that know any — ClassStats "skills", definitions in scripts/skills.gd).
-# Mirrors the items menu: rows list "Brave Strike (10)" with the mana
+# Mirrors the items menu: rows list "Brave Strike (10)" with the SP
 # cost and clicking one parks the floating Use button beside the panel.
 # Every known skill is always listed; a row greys out when the unit
 # can't afford it or, for attack-type skills, when nothing is in reach
 # to hit. Use on an attack-type skill enters the same targeting loop as
 # the Attack command, tagged with the skill — the forecast badges the
-# strike count and the mana only leaves when the strike commits, so
+# strike count and the SP only leaves when the strike commits, so
 # backing out of targeting costs nothing.
 
 var _skill_selected : int   = -1  # row the floating action button is on
@@ -1204,7 +1211,7 @@ func _on_skills_pressed() -> void:
     skills_panel.visible = true
     skills_panel.call_deferred("reset_size")
 
-## Fills the panel with one button per class skill, mana cost in
+## Fills the panel with one button per class skill, SP cost in
 ## parentheses — same fresh-each-opening pattern as the item list.
 func _rebuild_skill_list(unit: Area2D) -> void:
     _skill_selected                = -1
@@ -1253,7 +1260,7 @@ func _close_skills_menu() -> void:
 ## Use on a skill row. Effects dispatch on the skill's definition keys —
 ## only "strikes" (Brave Strike) exists yet: an attack-type skill, so it
 ## enters the Attack targeting loop tagged with the skill id. Nothing is
-## spent here; the commit click inside targeting pays the mana.
+## spent here; the commit click inside targeting pays the SP.
 func _use_skill(index: int) -> void:
     if _pending_unit == null or not _skills_open:
         return
@@ -1359,34 +1366,34 @@ func _attack_damage(attacker, _defender) -> int:
     var might    : int = Items.might(attacker.inventory[equipped]) if equipped >= 0 else 0
     return attacker.attack + might  # defender's def subtracts here later
 
-# ── Mana ───────────────────────────────────────────────────────────────────────
+# ── SP (skill points) ──────────────────────────────────────────────────────────
 # A mechanic of our own (no Fire Emblem equivalent): every blow that
-# lands feeds mana to BOTH participants — striker and struck alike each
-# gain their own aptitude total. Nothing spends it yet (spells/skills
-# later), and it has no UI yet; it just accumulates over the level.
+# lands feeds SP to BOTH participants — striker and struck alike each
+# gain their own aptitude total. Skills spend it (the Skills menu);
+# each unit's yellow gauge under its health bar shows it on the map.
 
-## Mana a unit generates per blow it deals or receives: its aptitude
-## stat plus its equipped weapon's aptitude — aptitude 1 holding the
-## iron sword (aptitude 2) generates 3 per blow.
-func _mana_gain(unit: Area2D) -> int:
+## SP a unit generates per blow it deals or receives: its aptitude stat
+## plus its equipped weapon's aptitude — aptitude 1 holding the iron
+## sword (aptitude 2) generates 3 per blow.
+func _sp_gain(unit: Area2D) -> int:
     var equipped : int = Items.equipped_index(unit)
     var weapon   : int = Items.aptitude(unit.inventory[equipped]) if equipped >= 0 else 0
     return unit.aptitude + weapon
 
 ## A blow landing at the bump's apex: the slash sound, the damage, and
-## the mana both sides generate from the exchange. Future impact effects
+## the SP both sides generate from the exchange. Future impact effects
 ## (crit flashes, hit sparks) belong here too.
 func _strike(attacker: Area2D, target: Area2D, dmg: int) -> void:
     if target.hp <= 0:
         return  # already down mid-sequence (brave overkill) — no blow lands
     _slash_player.play()
     target.take_damage(dmg)
-    attacker.gain_mana(_mana_gain(attacker))
-    target.gain_mana(_mana_gain(target))
+    attacker.gain_sp(_sp_gain(attacker))
+    target.gain_sp(_sp_gain(target))
 
 ## push_snapshot is false when the attacker's approach move already
 ## pushed one (the menu flow) — move + attack stay a single undo step.
-## skill_id tags a skill-driven engagement (Brave Strike): its mana cost
+## skill_id tags a skill-driven engagement (Brave Strike): its SP cost
 ## leaves the attacker HERE, after the snapshot, so undoing the attack
 ## refunds it, and its strike count multiplies the attacker's blows.
 func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
@@ -1395,7 +1402,7 @@ func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
         _push_undo_snapshot(_attack_label(attacker, defender, skill_id))
     _combat_active = true
     if skill_id != "":
-        attacker.gain_mana(-Skills.cost(skill_id))
+        attacker.gain_sp(-Skills.cost(skill_id))
 
     # Walk the approach (or just settle home when attacking in place).
     await _walk_unit(attacker, launch_cell)
@@ -1554,7 +1561,7 @@ func _capture_snapshot(label: String, type: String = "action") -> Dictionary:
             "visible"  : unit.visible,
             "pickable" : unit.input_pickable,
             "hp"       : unit.hp,
-            "mana"     : unit.mana,
+            "sp"       : unit.sp,
             "acted"    : unit.has_acted,
             "items"    : unit.inventory.duplicate(),
             "item_uses": unit.inventory_uses.duplicate(),
@@ -1696,7 +1703,7 @@ func _restore_snapshot(snap: Dictionary) -> void:
         unit.visible         = s["visible"]
         unit.input_pickable  = s["pickable"]
         unit.hp              = s["hp"]
-        unit.mana            = s["mana"]
+        unit.sp              = s["sp"]
         unit.has_acted       = s["acted"]
         unit.inventory       = s["items"].duplicate()
         unit.inventory_uses  = s["item_uses"].duplicate()

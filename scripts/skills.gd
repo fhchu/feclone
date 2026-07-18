@@ -3,15 +3,15 @@
 # in ClassStats ("skills" there). Dict-per-skill like items.gd — main.gd
 # dispatches effects from the keys a skill carries; "strikes" (an attack
 # that lands extra blows) is the only effect so far. Attack-type skills
-# run the normal targeting loop and only spend their mana when the
-# strike commits.
+# run the normal targeting loop and only spend their SP when the strike
+# commits.
 
 class_name Skills
 
 const DEFS : Dictionary = {
     "brave_strike": {
         "name": "Brave Strike",
-        "cost": 10,     # mana spent when the attack commits
+        "cost": 10,     # SP spent when the attack commits
         "strikes": 2,   # the skill's attack lands this many blows
     },
 }
@@ -21,7 +21,7 @@ const DEFS : Dictionary = {
 static func display_name(id: String) -> String:
     return DEFS.get(id, {}).get("name", id)
 
-## Mana spent to activate the skill.
+## SP spent to use the skill.
 static func cost(id: String) -> int:
     return DEFS.get(id, {}).get("cost", 0)
 
@@ -33,4 +33,4 @@ static func strikes(id: String) -> int:
 ## these out; board-dependent requirements (a target in reach for
 ## attack-type skills) are main.gd's to check on top.
 static func unusable_by(id: String, unit) -> bool:
-    return unit.mana < cost(id)
+    return unit.sp < cost(id)

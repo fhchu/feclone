@@ -79,7 +79,9 @@ theme_override_constants/separation = 10
 [node name="Portrait" type="TextureRect" parent="UI/UnitInfoPanel/HBoxContainer"]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
+size_flags_vertical = 4
 mouse_filter = 2
+stretch_mode = 5
 
 [node name="Info" type="VBoxContainer" parent="UI/UnitInfoPanel/HBoxContainer"]
 layout_mode = 2
@@ -96,7 +98,7 @@ text = "Lord"
 layout_mode = 2
 theme_override_colors/font_color = Color(0.82, 0.82, 0.85, 1)
 theme_override_font_sizes/font_size = 14
-text = "2 / 2"
+text = "HP 2 / 2"
 
 [node name="HpBarBack" type="ColorRect" parent="UI/UnitInfoPanel/HBoxContainer/Info"]
 custom_minimum_size = Vector2(120, 8)
@@ -109,6 +111,24 @@ offset_right = 120.0
 offset_bottom = 8.0
 mouse_filter = 2
 color = Color(0.92, 0.92, 0.94, 1)
+
+[node name="SpLabel" type="Label" parent="UI/UnitInfoPanel/HBoxContainer/Info"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.82, 0.85, 1)
+theme_override_font_sizes/font_size = 14
+text = "SP 0 / 10"
+
+[node name="SpBarBack" type="ColorRect" parent="UI/UnitInfoPanel/HBoxContainer/Info"]
+custom_minimum_size = Vector2(120, 8)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
+[node name="SpBarFill" type="ColorRect" parent="UI/UnitInfoPanel/HBoxContainer/Info/SpBarBack"]
+offset_right = 120.0
+offset_bottom = 8.0
+mouse_filter = 2
+color = Color(1, 0.85, 0.3, 1)
 
 [node name="WeaponLabel" type="Label" parent="UI/UnitInfoPanel/HBoxContainer/Info"]
 layout_mode = 2
