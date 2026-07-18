@@ -44,6 +44,7 @@ extends Node2D
 @onready var info_name        : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/NameLabel
 @onready var info_hp          : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/HpLabel
 @onready var info_bar_fill    : ColorRect      = $UI/UnitInfoPanel/HBoxContainer/Info/HpBarBack/HpBarFill
+@onready var info_weapon      : Label          = $UI/UnitInfoPanel/HBoxContainer/Info/WeaponLabel
 @onready var forecast_panel   : PanelContainer = $UI/ForecastPanel
 @onready var fc_atk_name      : Label          = $UI/ForecastPanel/VBoxContainer/AtkNameBox/AtkName
 @onready var fc_def_name      : Label          = $UI/ForecastPanel/VBoxContainer/DefNameBox/DefName
@@ -748,9 +749,9 @@ func _refresh_hover_preview() -> void:
 
 # ── Unit info card (hover) ─────────────────────────────────────────────────────
 # A neutral greyscale card in the top-left showing the hovered unit's
-# portrait (sprite for now), name, and hp. Shown for both teams, only
-# in the idle state: it disappears the moment a unit is selected or any
-# animation/menu owns the screen.
+# portrait (sprite for now), name, hp, and equipped weapon. Shown for
+# both teams, only in the idle state: it disappears the moment a unit is
+# selected or any animation/menu owns the screen.
 
 var _hovered_unit : Variant = null   # Area2D under the mouse, or null
 
@@ -780,8 +781,9 @@ func _refresh_unit_info() -> void:
     var portrait : AtlasTexture = info_portrait.texture
     portrait.atlas  = sprite.texture      # portrait art replaces this later
     portrait.region = sprite.region_rect
-    info_name.text = _hovered_unit.display_name()
-    info_hp.text   = "%d / %d" % [_hovered_unit.hp, _hovered_unit.max_hp]
+    info_name.text   = _hovered_unit.display_name()
+    info_hp.text     = "%d / %d" % [_hovered_unit.hp, _hovered_unit.max_hp]
+    info_weapon.text = _equipped_weapon_name(_hovered_unit)
     info_bar_fill.size = Vector2(
             INFO_BAR_WIDTH * _hovered_unit.hp / float(_hovered_unit.max_hp),
             info_bar_fill.size.y)
@@ -901,7 +903,8 @@ func _move_then_forecast(unit: Area2D, launch: Vector2i, target_cell: Vector2i) 
 
 var _forecast_side_left : bool = false
 
-## Display name of the unit's equipped weapon, for the forecast.
+## Display name of the unit's equipped weapon, for the forecast and the
+## hover info card.
 func _equipped_weapon_name(unit: Area2D) -> String:
     var index : int = Items.equipped_index(unit)
     return Items.display_name(unit.inventory[index]) if index >= 0 else "Unarmed"
