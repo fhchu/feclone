@@ -32,6 +32,7 @@ extends Node2D
 @onready var items_panel     : PanelContainer = $UI/ItemsPanel
 @onready var items_vbox      : VBoxContainer  = $UI/ItemsPanel/VBoxContainer
 @onready var items_close     : Button         = $UI/ItemsPanel/VBoxContainer/Header/CloseButton
+@onready var item_action_button : Button      = $UI/ItemActionButton
 @onready var map_menu          : PanelContainer = $UI/MapMenu
 @onready var danger_layer      : Node2D         = $DangerLayer
 @onready var danger_zone_check : CheckBox       = $UI/CornerButtons/DangerPanel/DangerRow/DangerZoneCheck
@@ -192,6 +193,7 @@ func _ready() -> void:
     wait_button.pressed.connect(_on_wait_pressed)
     items_button.pressed.connect(_on_items_pressed)
     items_close.pressed.connect(_close_items_menu)
+    item_action_button.pressed.connect(_on_item_action_pressed)
     map_menu.get_node("VBoxContainer/EndTurnButton").pressed.connect(_on_end_turn_pressed)
     danger_zone_check.toggled.connect(_on_danger_all_toggled)
     settings_button.pressed.connect(_on_settings_pressed)
@@ -821,6 +823,7 @@ func _clear_pending() -> void:
     action_menu.visible     = false
     items_panel.visible     = false
     forecast_panel.visible  = false
+    item_action_button.visible = false
 
 ## Living enemies within weapon reach (melee 1) of the unit's cell.
 func _adjacent_enemies(unit: Area2D) -> Array:
@@ -957,11 +960,22 @@ func _on_wait_pressed() -> void:
 
 # ── Items menu ─────────────────────────────────────────────────────────────────
 # Reached from the action menu's Items entry (shown only when the unit
-# carries something). The panel lists up to Items.MAX_SLOTS buttons —
-# fewer items make a shorter panel, sized like the action menu. Its ×
+# carries something). The panel lists up to Items.MAX_SLOTS rows —
+# fewer items make a shorter panel, sized like the action menu. Clicking
+# a row pops the shared ItemActionButton just OUTSIDE the panel's right
+# edge, aligned with that row — it floats beside the box so the box
+# itself never resizes. The button reads Equip for weapons, Use for
+# everything else (potions now, staves later — those are never equipped,
+# they just sit in the inventory). Equip is free — the weapon moves to
+# the top of the inventory (the equipped slot) and the turn continues;
+# Use is the unit's action for the turn, ending it like Wait does. The ×
 # button and any click outside both return to the action menu with
-# nothing spent; using an item is the unit's action for the turn, ending
-# it like Wait does.
+# nothing spent.
+
+const ITEM_ACTION_GAP : float = 10.0  # panel edge → floating button
+
+var _item_selected : int   = -1  # row the floating action button is on
+var _item_rows     : Array = []  # row Buttons in list order (for placement)
 
 ## Items: swap the action menu for this unit's item list.
 func _on_items_pressed() -> void:
@@ -976,34 +990,107 @@ func _on_items_pressed() -> void:
 
 ## Fills the panel with one button per carried item (menu-button style,
 ## created fresh each opening — freed and rebuilt so the panel always
-## matches the inventory).
+## matches the inventory). Weapons list by name alone (durability is
+## undecided, so no charge readout); consumables keep their "2/3"; the
+## equipped weapon is marked (E).
 func _rebuild_item_list(unit: Area2D) -> void:
+    _item_selected             = -1
+    _item_rows                 = []
+    item_action_button.visible = false
     for child in items_vbox.get_children():
         if child.name != "Header":
+            # Deferred free: Equip rebuilds from inside a row button's own
+            # pressed signal, and freeing the emitter mid-emission crashes.
             items_vbox.remove_child(child)
-            child.free()
+            child.queue_free()
+    var equipped : int = Items.equipped_index(unit)
     for index in mini(unit.inventory.size(), Items.MAX_SLOTS):
         var id  : String = unit.inventory[index]
         var btn : Button = Button.new()
-        btn.text = "%s %d/%d" % [Items.display_name(id),
-                unit.inventory_uses[index], Items.max_uses(id)]
+        btn.text = Items.display_name(id) if Items.is_weapon(id) \
+                else "%s %d/%d" % [Items.display_name(id),
+                        unit.inventory_uses[index], Items.max_uses(id)]
+        if index == equipped:
+            btn.text += " (E)"
         btn.disabled = Items.unusable_by(id, unit)  # e.g. healing at full hp
         btn.custom_minimum_size = Vector2(200, 48)
         btn.add_theme_font_size_override("font_size", 24)
-        btn.pressed.connect(_on_item_pressed.bind(index))
+        btn.pressed.connect(_on_item_row_pressed.bind(index))
+        _item_rows.append(btn)
         items_vbox.add_child(btn)
+
+## Clicking a row toggles the floating Equip/Use button, parked beside
+## the panel's right edge in line with that row — the pop-out is pure
+## selection, nothing is spent yet.
+func _on_item_row_pressed(index: int) -> void:
+    if not _items_open or _pending_unit == null:
+        return
+    if _item_selected == index:
+        _item_selected             = -1
+        item_action_button.visible = false
+        return
+    _item_selected = index
+    var id  : String = _pending_unit.inventory[index]
+    var row : Button = _item_rows[index]
+    item_action_button.text = "Equip" if Items.is_weapon(id) else "Use"
+    item_action_button.reset_size()  # width follows the label
+    item_action_button.global_position = Vector2(
+            items_panel.global_position.x + items_panel.size.x + ITEM_ACTION_GAP,
+            row.global_position.y + (row.size.y - item_action_button.size.y) / 2.0)
+    item_action_button.visible = true
+
+## The floating button dispatches on what its row holds: Equip for
+## weapons (free), Use for consumables (the unit's action).
+func _on_item_action_pressed() -> void:
+    if not _items_open or _pending_unit == null or _item_selected < 0:
+        return
+    var index : int = _item_selected
+    if index >= _pending_unit.inventory.size():
+        return
+    if Items.is_weapon(_pending_unit.inventory[index]):
+        _on_equip_pressed(index)
+    else:
+        _on_item_pressed(index)
+
+## Equip: move the weapon (and its charges) to the top of the inventory,
+## where the equipped weapon lives. Free — the items panel stays open and
+## the unit still has its action. No snapshot is pushed: equipping isn't
+## an undoable action, and if the pending move's snapshot predates it we
+## sync that snapshot so cancelling the move keeps the new weapon (FE
+## behaviour: item management survives the B-cancel).
+func _on_equip_pressed(index: int) -> void:
+    if _pending_unit == null or not _items_open:
+        return
+    var unit : Area2D = _pending_unit
+    if index >= unit.inventory.size():
+        return
+    var id   : String = unit.inventory[index]
+    var uses : int    = unit.inventory_uses[index]
+    unit.inventory.remove_at(index)
+    unit.inventory_uses.remove_at(index)
+    unit.inventory.insert(0, id)
+    unit.inventory_uses.insert(0, uses)
+    if _pending_snapshot_taken and not undo_stack.is_empty():
+        var state : Variant = undo_stack.back()["unit_states"].get(String(unit.name))
+        if state != null:
+            state["items"]     = unit.inventory.duplicate()
+            state["item_uses"] = unit.inventory_uses.duplicate()
+    _rebuild_item_list(unit)
+    items_panel.call_deferred("reset_size")
 
 ## × or a click outside the panel: back to the unit's action menu.
 func _close_items_menu() -> void:
-    _items_open         = false
-    items_panel.visible = false
+    _items_open                = false
+    items_panel.visible        = false
+    item_action_button.visible = false
     if _pending_unit != null:
         _open_action_menu(_pending_unit, _pending_snapshot_taken)
 
-## Using an item ends the unit's turn. Effects dispatch on the item's
-## definition keys — only "heal" exists yet; the undo snapshot is taken
-## before anything is consumed, so undo returns charge and health alike.
-## Spending the last charge removes the item from the inventory.
+## Use (the floating action button on a consumable's row): using an item
+## ends the unit's turn. Effects dispatch on the item's definition keys —
+## only "heal" exists yet; the undo snapshot is taken before anything is
+## consumed, so undo returns charge and health alike. Spending the last
+## charge removes the item from the inventory.
 func _on_item_pressed(index: int) -> void:
     if _pending_unit == null or not _items_open:
         return
@@ -1094,11 +1181,11 @@ func _move_unit_walking(unit: Area2D, target: Vector2i) -> void:
 # ── Combat ─────────────────────────────────────────────────────────────────────
 # A melee engagement: the attacker moves to its launch cell, bumps into the
 # defender (damage lands mid-swing), and the defender counter-bumps if it
-# survives. Damage is a flat 1 for now — _attack_damage() is the seam where
-# weapons and rpg stats (def, crit, …) plug in later. The future
-# weapon-choice menu opens inside _begin_combat, between the approach move
-# and the bump — same stash-state-and-resume pattern as the chess
-# promotion panel.
+# survives. Damage is attack + equipped weapon might — _attack_damage() is
+# the seam where the remaining rpg stats (def, crit, …) plug in later. The
+# future weapon-choice menu opens inside _begin_combat, between the
+# approach move and the bump — same stash-state-and-resume pattern as the
+# chess promotion panel.
 
 const BUMP_TIME     : float = 0.12  # seconds each way
 const BUMP_DISTANCE : float = 0.45  # fraction of the way into the target's cell
@@ -1110,8 +1197,10 @@ var _slash_player  : AudioStreamPlayer  # created in _ready
 ## Fired when an engagement fully resolves; _run_enemy_phase awaits it.
 signal combat_finished
 
-func _attack_damage(_attacker, _defender) -> int:
-    return 1  # flat subtraction for now
+func _attack_damage(attacker, _defender) -> int:
+    var equipped : int = Items.equipped_index(attacker)
+    var might    : int = Items.might(attacker.inventory[equipped]) if equipped >= 0 else 0
+    return attacker.attack + might  # defender's def subtracts here later
 
 ## A blow landing at the bump's apex: the slash sound plus the damage.
 ## Future impact effects (crit flashes, hit sparks) belong here too.

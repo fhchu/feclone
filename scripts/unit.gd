@@ -59,6 +59,10 @@ var move_range : int:
         hp = value  # editor shows a full bar; runtime starts at full health
         queue_redraw()
 
+## Base attack power. Combat damage is attack + the equipped weapon's
+## might (see _attack_damage in main.gd), so an unarmed unit deals this.
+@export_range(0, 99) var attack : int = 1
+
 ## Item ids this unit carries (definitions in scripts/items.gd). The
 ## items menu lists them in order and shows at most Items.MAX_SLOTS.
 @export var inventory : Array[String] = []

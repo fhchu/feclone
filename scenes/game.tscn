@@ -191,6 +191,12 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "×"
 
+[node name="ItemActionButton" type="Button" parent="UI"]
+visible = false
+custom_minimum_size = Vector2(96, 48)
+theme_override_font_sizes/font_size = 24
+text = "Equip"
+
 [node name="ForecastPanel" type="PanelContainer" parent="UI"]
 visible = false
 mouse_filter = 2
