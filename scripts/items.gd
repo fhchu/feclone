@@ -19,16 +19,27 @@ const DEFS : Dictionary = {
     # Weapons carry no "uses" for now — durability is undecided, so the
     # items menu lists them by name alone and nothing consumes charges.
     # "aptitude" is the weapon's share of the wielder's SP generation
-    # (see the SP section in main.gd).
+    # (see the SP section in main.gd). "range" is the Manhattan
+    # distance(s) the weapon strikes at: an int for a single distance,
+    # or [min, max] for the 1-2 range swords/lances planned later. The
+    # bow's flat 2 means it can neither attack nor counter adjacent.
     "iron_sword": {
         "name": "Iron Sword",
         "might": 5,
         "aptitude": 2,
+        "range": 1,
     },
     "iron_lance": {
         "name": "Iron Lance",
         "might": 6,
         "aptitude": 1,
+        "range": 1,
+    },
+    "iron_bow": {
+        "name": "Iron Bow",
+        "might": 6,
+        "aptitude": 1,
+        "range": 2,
     },
 }
 
@@ -66,6 +77,19 @@ static func might(id: String) -> int:
 ## the unit's own aptitude stat (0 for non-weapons).
 static func aptitude(id: String) -> int:
     return DEFS.get(id, {}).get("aptitude", 0)
+
+## A weapon's reach as a [min, max] pair of Manhattan distances —
+## "range" in DEFS is an int (exact distance) or already such a pair.
+## Undeclared means melee 1.
+static func reach_of(id: String) -> Array:
+    var r : Variant = DEFS.get(id, {}).get("range", 1)
+    return r if r is Array else [r, r]
+
+## Reach of the unit's equipped weapon. Bare fists are melee 1, so
+## unarmed units keep bumping (and counter-bumping) adjacent enemies.
+static func reach(unit) -> Array:
+    var equipped : int = equipped_index(unit)
+    return reach_of(unit.inventory[equipped]) if equipped >= 0 else [1, 1]
 
 ## Inventory index of the unit's equipped weapon, or -1 when unarmed.
 ## The equipped weapon is the FIRST weapon in the inventory — Equip

@@ -64,8 +64,8 @@ Adding a new terrain type is: add its art and tile, set the tile's
    every level, no snap configuration needed), and the game re-snaps
    on load regardless.
 3. With the unit selected, set its properties in the Inspector:
-   - **Unit Class** — lord, cleric, cavalier, knight, mage, soldier
-     (the sprite updates immediately in the editor)
+   - **Unit Class** — lord, archer, cleric, cavalier, knight, mage,
+     soldier (the sprite updates immediately in the editor)
    - **Sprite Variant** — male/female, for classes that offer both
      (currently the lord)
    - **Character Name** — optional unique name ("Lyon"); empty units
@@ -208,12 +208,17 @@ units move or fall.
 
 When a player unit is selected, its whole strike range beyond the blue
 movement tiles glows red; enemies standing anywhere in that red fringe
-can be attacked. Dropping
-(or clicking) on a red enemy moves the unit next to it and the two bump
-into each other: the attacker strikes first, then the defender
-counterattacks if it survived. Damage is a flat 1 for now — weapons and
-rpg stats (def/crit/…) come later, as does a weapon-choice menu before
-the strike. Undo reverts a whole engagement, including deaths.
+can be attacked. Attack range comes from the equipped weapon (the
+`range` entry in `scripts/items.gd`): iron swords and lances reach 1,
+the iron bow exactly 2 — so a bow can neither attack nor counter an
+adjacent enemy, and its red ring skips the four adjacent tiles.
+Dropping (or clicking) on a red enemy moves the unit into range and the
+two bump at each other: the attacker strikes first, then the defender
+counterattacks if it survived and its own weapon reaches back (the
+forecast shows "--" for a defender that can't). Damage is attack +
+weapon might — rpg stats (def/crit/…) come later, as does a
+weapon-choice menu before the strike. Undo reverts a whole engagement,
+including deaths.
 
 ### Items
 

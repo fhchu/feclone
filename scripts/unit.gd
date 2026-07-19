@@ -12,17 +12,19 @@
 extends Area2D
 
 # ── Sprite sheet layout ────────────────────────────────────────────────────────
-# Must match the actual pixel dimensions of pieces.png.
+# Must match the actual pixel dimensions of sprites_unit_map.png.
 const SPRITE_SIZE : int = 64
 
-# Sprite columns come from ClassStats (classes and columns are no
-# longer 1:1 — variants and shared art exist); rows are the teams.
+# Sprite cells come from ClassStats (classes and cells are no longer
+# 1:1 — variants and shared art exist). The sheet is stacked blue/red
+# row-pairs: ClassStats picks the (column, pair) cell and the team
+# picks the row within that pair.
 const TEAM_ROW : Dictionary = {
     "blue": 0, "red": 1
 }
 
 # ── Designer-facing properties (set in the Inspector) ──────────────────────────
-@export_enum("cavalier", "cleric", "knight", "lord", "mage", "soldier")
+@export_enum("archer", "cavalier", "cleric", "knight", "lord", "mage", "soldier")
 var unit_class : String = "lord":
     set(value):
         unit_class = value
@@ -187,16 +189,17 @@ func _apply_acted_tint() -> void:
     mat.set_shader_parameter("saturation", ACTED_SATURATION if has_acted else 1.0)
     mat.set_shader_parameter("brightness", ACTED_BRIGHTNESS if has_acted else 1.0)
 
-## Points the sprite region at the right pieces.png tile for class + team.
-## Runs in the editor too (exports call it from their setters).
+## Points the sprite region at the right sprites_unit_map.png tile for
+## class + team. Runs in the editor too (exports call it from setters).
 func _refresh_sprite() -> void:
     if not is_node_ready():
         return  # setters fire during scene load, before children exist
     var sprite : Sprite2D = $Sprite2D
+    var cell   : Vector2i = ClassStats.sprite_cell(unit_class, sprite_variant)
     sprite.region_enabled = true
     sprite.region_rect    = Rect2(
-        ClassStats.sprite_col(unit_class, sprite_variant) * SPRITE_SIZE,
-        TEAM_ROW[team] * SPRITE_SIZE,
+        cell.x * SPRITE_SIZE,
+        (cell.y * 2 + TEAM_ROW[team]) * SPRITE_SIZE,
         SPRITE_SIZE,
         SPRITE_SIZE
     )

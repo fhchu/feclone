@@ -336,29 +336,47 @@ func _get_reach_costs(unit, max_cost: int = -1) -> Dictionary:
             frontier.append(nxt)
     return costs
 
-## Every cell the unit could strike but not stand on: the red fringe one
-## weapon-reach (melee 1 for now) beyond the movement range, whether or
-## not anything is standing there.
-func _get_attack_fringe(costs: Dictionary) -> Array:
-    var fringe : Dictionary = {}
+## Every offset whose Manhattan distance lies within the unit's weapon
+## reach — the diamond ring(s) its strikes can land on. Reach comes from
+## the equipped weapon (Items.reach; bare fists are melee 1), so the
+## iron bow's flat 2 yields only the outer ring: the 8 cells exactly two
+## tiles out, never the adjacent 4.
+func _reach_offsets(unit: Area2D) -> Array:
+    var reach   : Array = Items.reach(unit)
+    var offsets : Array = []
+    for d in range(reach[0], reach[1] + 1):
+        for dx in range(-d, d + 1):
+            var dy : int = d - absi(dx)
+            offsets.append(Vector2i(dx, dy))
+            if dy != 0:
+                offsets.append(Vector2i(dx, -dy))
+    return offsets
+
+## Every cell the unit could strike but not stand on: the red fringe its
+## weapon's reach beyond the movement range, whether or not anything is
+## standing there.
+func _get_attack_fringe(unit: Area2D, costs: Dictionary) -> Array:
+    var fringe  : Dictionary = {}
+    var offsets : Array      = _reach_offsets(unit)
     for cell in costs:
-        for dir in ORTHO_DIRS:
-            var n : Vector2i = cell + dir
+        for offset in offsets:
+            var n : Vector2i = cell + offset
             if _in_bounds(n) and not costs.has(n):
                 fringe[n] = true
     return fringe.keys()
 
-## Enemy cells the unit can strike this move (melee range 1), mapped to
-## the cheapest reachable cell to launch the attack from — possibly the
-## cell it already stands on.
+## Enemy cells the unit can strike this move (its weapon's reach around
+## anywhere it can stand), mapped to the cheapest reachable cell to
+## launch the attack from — possibly the cell it already stands on.
 func _get_attack_targets(unit, costs: Dictionary) -> Dictionary:
     var targets : Dictionary = {}
+    var offsets : Array      = _reach_offsets(unit)
     for enemy_cell in unit_map:
         if unit_map[enemy_cell].team == unit.team:
             continue
         var best : Variant = null
-        for dir in ORTHO_DIRS:
-            var launch : Vector2i = enemy_cell + dir
+        for offset in offsets:
+            var launch : Vector2i = enemy_cell + offset
             if costs.has(launch) and (best == null or costs[launch] < costs[best]):
                 best = launch
         if best != null:
@@ -553,7 +571,7 @@ func _select_unit(unit: Area2D) -> void:
     overlay.show_range(reachable_cells)
     # The whole strike fringe reads red; only cells in attack_targets
     # (the ones holding enemies) are actually actionable.
-    overlay.show_attack_cells(_get_attack_fringe(costs))
+    overlay.show_attack_cells(_get_attack_fringe(unit, costs))
 
 func _on_drag_moved(unit: Area2D, world_pos: Vector2) -> void:
     if unit != selected_unit:
@@ -721,13 +739,14 @@ func _toggle_danger(unit: Area2D) -> void:
     _refresh_danger()
     _refresh_hover_preview()  # tracked units stop showing the preview
 
-## Every cell a unit could strike this turn: neighbours of everywhere it
-## can stand (its own melee coverage), movement and blockers included.
+## Every cell a unit could strike this turn: its weapon's reach around
+## everywhere it can stand, movement and blockers included.
 func _threat_cells(unit: Area2D, into: Dictionary) -> void:
-    var costs : Dictionary = _get_reach_costs(unit)
+    var costs   : Dictionary = _get_reach_costs(unit)
+    var offsets : Array      = _reach_offsets(unit)
     for cell in costs:
-        for dir in ORTHO_DIRS:
-            var n : Vector2i = cell + dir
+        for offset in offsets:
+            var n : Vector2i = cell + offset
             if _in_bounds(n):
                 into[n] = true
 
@@ -759,14 +778,16 @@ func _refresh_hover_preview() -> void:
         danger_layer.clear_preview()
         return
     var costs : Dictionary = _get_reach_costs(_hovered_unit)
-    danger_layer.show_preview(costs.keys(), _get_attack_fringe(costs))
+    danger_layer.show_preview(costs.keys(), _get_attack_fringe(_hovered_unit, costs))
 
 # ── Unit info card (hover) ─────────────────────────────────────────────────────
-# A neutral greyscale card in the top-left showing the hovered unit's
-# portrait (sprite for now), name, hp, sp (yellow bar, like the map
-# gauge), and equipped weapon. Shown for both teams, only in the idle
-# state: it disappears the moment a unit is selected or any
-# animation/menu owns the screen.
+# A neutral greyscale card showing the hovered unit's portrait (sprite
+# for now), name, hp, sp (yellow bar, like the map gauge), and equipped
+# weapon. Shown for both teams, only in the idle state: it disappears
+# the moment a unit is selected or any animation/menu owns the screen.
+# It lives in the top-LEFT corner, except that hovering a unit on the
+# left half of the screen flips it to the top-right (the forecast's
+# side-pick, camera-aware) — the card never sits over the mouse.
 
 var _hovered_unit : Variant = null   # Area2D under the mouse, or null
 
@@ -806,14 +827,35 @@ func _refresh_unit_info() -> void:
     var sp_frac : float = _hovered_unit.sp / float(_hovered_unit.max_sp) \
             if _hovered_unit.max_sp > 0 else 0.0
     info_sp_fill.size = Vector2(INFO_BAR_WIDTH * sp_frac, info_sp_fill.size.y)
+    # Side-pick from the unit's on-SCREEN position (camera-aware): a
+    # unit on the left half sends the card to the top-right corner.
+    var screen_x : float = _hovered_unit.get_global_transform_with_canvas().origin.x
+    _info_side_right = screen_x < get_viewport().get_visible_rect().size.x / 2.0
     info_panel.visible = true
+    info_panel.call_deferred("reset_size")
+    call_deferred("_place_info_panel")
+
+var _info_side_right : bool = false
+
+const INFO_PANEL_MARGIN : float = 8.0  # the corner UI's shared inset
+
+## Positions the card after the container has sized itself: top-left by
+## default, hugging the top-right edge when the hovered unit is on the
+## left half of the screen.
+func _place_info_panel() -> void:
+    if not info_panel.visible:
+        return
+    var x : float = INFO_PANEL_MARGIN
+    if _info_side_right:
+        x = info_panel.get_viewport_rect().size.x - info_panel.size.x - INFO_PANEL_MARGIN
+    info_panel.position = Vector2(x, INFO_PANEL_MARGIN)
 
 # ── Action menu (the FE move-then-menu flow) ──────────────────────────────────
 # Moving a unit no longer ends its turn: the unit walks, then this
 # centered menu owns the turn until Attack or Wait resolves it. Attack
 # only lists when an enemy stands within weapon reach of the unit's
 # current cell; picking it swaps the menu for target selection (red
-# squares on the adjacent enemies — click one to strike, click anything
+# squares on the enemies in reach — click one to strike, click anything
 # else to come back to the menu). Items joins these buttons later.
 # Clicking anywhere OUTSIDE the open menu cancels the pending action:
 # the approach move is reverted and the unit returns to being merely
@@ -827,7 +869,7 @@ func _open_action_menu(unit: Area2D, snapshot_taken: bool) -> void:
     _pending_unit           = unit
     _pending_snapshot_taken = snapshot_taken
     _menu_open              = true
-    attack_button.visible   = not _adjacent_enemies(unit).is_empty()
+    attack_button.visible   = not _enemies_in_reach(unit).is_empty()
     skills_button.visible   = not ClassStats.skills(unit.unit_class).is_empty()
     items_button.visible    = not unit.inventory.is_empty()
     action_menu.visible     = true
@@ -852,11 +894,11 @@ func _clear_pending() -> void:
     forecast_panel.visible  = false
     floating_action_button.visible = false
 
-## Living enemies within weapon reach (melee 1) of the unit's cell.
-func _adjacent_enemies(unit: Area2D) -> Array:
+## Living enemies within the unit's weapon reach of its current cell.
+func _enemies_in_reach(unit: Area2D) -> Array:
     var cells : Array = []
-    for dir in ORTHO_DIRS:
-        var n : Vector2i = unit.cell + dir
+    for offset in _reach_offsets(unit):
+        var n : Vector2i = unit.cell + offset
         if unit_map.has(n) and unit_map[n].team != unit.team:
             cells.append(n)
     return cells
@@ -882,7 +924,7 @@ func _enter_targeting(skill_id: String) -> void:
     _targetable             = {}
     _forecast_target        = null
     forecast_panel.visible  = false
-    for cell in _adjacent_enemies(_pending_unit):
+    for cell in _enemies_in_reach(_pending_unit):
         _targetable[cell] = true
     overlay.show_attack_cells(_targetable.keys())
 
@@ -933,7 +975,7 @@ func _move_then_forecast(unit: Area2D, launch: Vector2i, target_cell: Vector2i) 
     _pending_snapshot_taken = true
     _targeting              = true
     _targetable             = {}
-    for cell in _adjacent_enemies(unit):
+    for cell in _enemies_in_reach(unit):
         _targetable[cell] = true
     overlay.show_attack_cells(_targetable.keys())
     _forecast_target = target_cell
@@ -968,7 +1010,12 @@ func _show_forecast(attacker: Area2D, defender: Area2D) -> void:
     fc_blue_mult.visible = strikes > 1
     fc_blue_mult.text    = "×%d" % strikes
     fc_red_hp.text     = str(defender.hp)
-    fc_red_mt.text     = str(_attack_damage(defender, attacker))
+    # A defender whose weapon can't reach back across this engagement
+    # distance won't counter, so its Might column reads "--" (the
+    # attacker always reaches — targeting only offered cells in reach).
+    fc_red_mt.text     = str(_attack_damage(defender, attacker)) \
+            if _can_strike_at(defender, _manhattan(attacker.cell, defender.cell)) \
+            else "--"
     # Side-pick from the attacker's on-SCREEN position (camera-aware):
     # the panel goes to whichever half the attacker isn't on.
     var screen_x : float = attacker.get_global_transform_with_canvas().origin.x
@@ -1223,7 +1270,7 @@ func _rebuild_skill_list(unit: Area2D) -> void:
             # pressed signal (same hazard as Equip).
             skills_vbox.remove_child(child)
             child.queue_free()
-    var has_target : bool = not _adjacent_enemies(unit).is_empty()
+    var has_target : bool = not _enemies_in_reach(unit).is_empty()
     for id in ClassStats.skills(unit.unit_class):
         var btn : Button = Button.new()
         btn.text = "%s (%d)" % [Skills.display_name(id), Skills.cost(id)]
@@ -1272,7 +1319,7 @@ func _use_skill(index: int) -> void:
     if Skills.unusable_by(id, unit):
         return
     if Skills.strikes(id) > 1:
-        if _adjacent_enemies(unit).is_empty():
+        if _enemies_in_reach(unit).is_empty():
             return  # the greyed row already blocks this; guard direct calls
         _enter_targeting(id)
 
@@ -1343,13 +1390,15 @@ func _move_unit_walking(unit: Area2D, target: Vector2i) -> void:
     _open_action_menu(unit, true)
 
 # ── Combat ─────────────────────────────────────────────────────────────────────
-# A melee engagement: the attacker moves to its launch cell, bumps into the
+# An engagement: the attacker moves to its launch cell, bumps toward the
 # defender (damage lands mid-swing), and the defender counter-bumps if it
-# survives. Damage is attack + equipped weapon might — _attack_damage() is
-# the seam where the remaining rpg stats (def, crit, …) plug in later. The
-# future weapon-choice menu opens inside _begin_combat, between the
-# approach move and the bump — same stash-state-and-resume pattern as the
-# chess promotion panel.
+# survives AND its weapon reaches back across the engagement distance —
+# a sword can't answer an arrow from two tiles away, and the iron bow's
+# flat 2 can't answer an adjacent blade. Damage is attack + equipped
+# weapon might — _attack_damage() is the seam where the remaining rpg
+# stats (def, crit, …) plug in later. The future weapon-choice menu opens
+# inside _begin_combat, between the approach move and the bump — same
+# stash-state-and-resume pattern as the chess promotion panel.
 
 const BUMP_TIME     : float = 0.12  # seconds each way
 const BUMP_DISTANCE : float = 0.45  # fraction of the way into the target's cell
@@ -1365,6 +1414,16 @@ func _attack_damage(attacker, _defender) -> int:
     var equipped : int = Items.equipped_index(attacker)
     var might    : int = Items.might(attacker.inventory[equipped]) if equipped >= 0 else 0
     return attacker.attack + might  # defender's def subtracts here later
+
+func _manhattan(a: Vector2i, b: Vector2i) -> int:
+    return absi(a.x - b.x) + absi(a.y - b.y)
+
+## True when the unit's equipped weapon (fists: melee 1) can land a blow
+## at the given Manhattan distance — gates counterattacks and the
+## forecast's counter column.
+func _can_strike_at(unit: Area2D, dist: int) -> bool:
+    var reach : Array = Items.reach(unit)
+    return dist >= reach[0] and dist <= reach[1]
 
 # ── SP (skill points) ──────────────────────────────────────────────────────────
 # A mechanic of our own (no Fire Emblem equivalent): every blow that
@@ -1413,14 +1472,21 @@ func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
     # Skill strikes land consecutively (GBA-brave order); counters never
     # multiply, only the attack that carries the skill.
     var strikes  : int     = Skills.strikes(skill_id) if skill_id != "" else 1
-    var counters : bool    = defender.hp > atk_dmg * strikes  # the defeated don't counter
+    # The defeated don't counter — and neither does a weapon that can't
+    # reach back across the engagement distance.
+    var dist     : int     = _manhattan(attacker.cell, defender.cell)
+    var counters : bool    = defender.hp > atk_dmg * strikes \
+            and _can_strike_at(defender, dist)
+    # The homes sit further apart at range, so the lerp fraction shrinks
+    # to keep the bump excursion roughly one constant on-screen nudge.
+    var bump     : float   = BUMP_DISTANCE / dist
 
     var tw : Tween = create_tween()
     tw.bind_node(level)
     tw.tween_callback(func() -> void: attacker.z_index = 10)
     for i in strikes:
         tw.tween_property(attacker, "global_position",
-                atk_home.lerp(def_home, BUMP_DISTANCE), _anim(BUMP_TIME))
+                atk_home.lerp(def_home, bump), _anim(BUMP_TIME))
         tw.tween_callback(_strike.bind(attacker, defender, atk_dmg))
         tw.tween_property(attacker, "global_position", atk_home, _anim(BUMP_TIME))
     tw.tween_callback(func() -> void: attacker.z_index = 1)
@@ -1429,7 +1495,7 @@ func _begin_combat(attacker: Area2D, defender: Area2D, launch_cell: Vector2i,
         var def_dmg : int = _attack_damage(defender, attacker)
         tw.tween_callback(func() -> void: defender.z_index = 10)
         tw.tween_property(defender, "global_position",
-                def_home.lerp(atk_home, BUMP_DISTANCE), _anim(BUMP_TIME))
+                def_home.lerp(atk_home, bump), _anim(BUMP_TIME))
         tw.tween_callback(_strike.bind(defender, attacker, def_dmg))
         tw.tween_property(defender, "global_position", def_home, _anim(BUMP_TIME))
         tw.tween_callback(func() -> void: defender.z_index = 1)

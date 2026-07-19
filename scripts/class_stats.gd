@@ -24,14 +24,19 @@ const MOVE_COSTS : Dictionary = {
     "flying":   {"plains": 1, "forest": 1, "mountain": 1},
 }
 
-# "sprites" maps variant → pieces.png column. Columns can be shared
-# between classes (soldier borrows the pawn art until it gets its own)
-# and a class can offer several variants (the lord's male/female pair).
+# "sprites" maps variant → sprites_unit_map.png cell. The sheet is
+# stacked blue/red row-PAIRS: a bare int is a column on the first pair
+# (the original chess-piece art), a Vector2i is (column, pair) for art
+# on the lower pairs — the archer's (0, 1) is the first column of the
+# second blue/red pair. Cells can be shared between classes (soldier
+# borrows the pawn art until it gets its own) and a class can offer
+# several variants (the lord's male/female pair).
 # "skills" lists the class's skill ids (scripts/skills.gd); omitted
 # means the class has none.
 const STATS : Dictionary = {
     "lord":     {"mov": 5, "move_type": "infantry", "sprites": {"male": 0, "female": 1},
             "skills": ["brave_strike"]},
+    "archer":   {"mov": 5, "move_type": "infantry", "sprites": {"male": Vector2i(0, 1)}},
     "cleric":   {"mov": 5, "move_type": "magic",    "sprites": {"male": 2}},   # placeholder class
     "cavalier": {"mov": 7, "move_type": "mounted",  "sprites": {"male": 3}},
     "knight":   {"mov": 4, "move_type": "infantry", "sprites": {"male": 4}},
@@ -56,10 +61,9 @@ static func terrain_cost(unit_class: String, terrain: String) -> int:
 static func skills(unit_class: String) -> Array:
     return STATS[unit_class].get("skills", [])
 
-## Sprite-sheet column for a class. Classes without the requested
-## variant fall back to their first sprite.
-static func sprite_col(unit_class: String, variant: String = "male") -> int:
+## Sprite-sheet cell for a class as (column, row-pair index). Classes
+## without the requested variant fall back to their first sprite.
+static func sprite_cell(unit_class: String, variant: String = "male") -> Vector2i:
     var sprites : Dictionary = STATS[unit_class]["sprites"]
-    if sprites.has(variant):
-        return sprites[variant]
-    return sprites.values()[0]
+    var value : Variant = sprites[variant] if sprites.has(variant) else sprites.values()[0]
+    return value if value is Vector2i else Vector2i(value, 0)

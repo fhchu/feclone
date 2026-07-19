@@ -20,7 +20,8 @@ character_name = "Alex"
 
 [node name="Ally2" parent="Units" unique_id=1012786553 instance=ExtResource("5_unit")]
 position = Vector2(96, 544)
-unit_class = "cavalier"
+unit_class = "archer"
+inventory = Array[String](["iron_bow"])
 
 [node name="Enemy1" parent="Units" unique_id=1913840752 instance=ExtResource("5_unit")]
 position = Vector2(544, 96)

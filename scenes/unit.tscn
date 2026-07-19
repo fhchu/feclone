@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://dfeun1tqv7x2m"]
 
-[ext_resource type="Script" path="res://scripts/unit.gd" id="1_unit"]
-[ext_resource type="Texture2D" uid="uid://bgd1qyck4i13w" path="res://assets/pieces.png" id="2_sheet"]
-[ext_resource type="Shader" path="res://assets/unit_tint.gdshader" id="3_tint"]
+[ext_resource type="Script" uid="uid://brj0xxsolseva" path="res://scripts/unit.gd" id="1_unit"]
+[ext_resource type="Texture2D" uid="uid://bgd1qyck4i13w" path="res://assets/sprites_unit_map.png" id="2_sheet"]
+[ext_resource type="Shader" uid="uid://bo6virijsyo4x" path="res://assets/unit_tint.gdshader" id="3_tint"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_tint"]
 resource_local_to_scene = true

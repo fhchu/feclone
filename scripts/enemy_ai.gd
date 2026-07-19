@@ -64,16 +64,18 @@ static func decide(unit: Area2D, board: Node2D) -> Dictionary:
             return PASS
 
 ## The furthest step this turn along the cheapest path to the nearest
-## player-adjacent cell (nearest by whole-map path cost). Passes when
+## cell within the unit's weapon reach of a player (nearest by whole-map
+## path cost) — an archer hunts to bow range, not to melee. Passes when
 ## every player unit is unreachable (walled off by units or terrain).
 static func _advance_toward_nearest(unit: Area2D, board: Node2D) -> Dictionary:
-    var full : Dictionary = board._get_reach_costs(unit, 999999)
+    var full    : Dictionary = board._get_reach_costs(unit, 999999)
+    var offsets : Array      = board._reach_offsets(unit)
     var best_launch : Variant = null
     for cell in board.unit_map:
         if board.unit_map[cell].team == unit.team:
             continue
-        for dir in board.ORTHO_DIRS:
-            var launch : Vector2i = cell + dir
+        for offset in offsets:
+            var launch : Vector2i = cell + offset
             if full.has(launch) and (best_launch == null or full[launch] < full[best_launch]):
                 best_launch = launch
     if best_launch == null or best_launch == unit.cell:
