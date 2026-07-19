@@ -23,6 +23,8 @@ const DEFS : Dictionary = {
     # distance(s) the weapon strikes at: an int for a single distance,
     # or [min, max] for the 1-2 range swords/lances planned later. The
     # bow's flat 2 means it can neither attack nor counter adjacent.
+    # "effective" multiplies the weapon's MIGHT against defenders whose
+    # movement group it names (FE effectiveness — bows punish fliers).
     "iron_sword": {
         "name": "Iron Sword",
         "might": 5,
@@ -40,6 +42,7 @@ const DEFS : Dictionary = {
         "might": 6,
         "aptitude": 1,
         "range": 2,
+        "effective": {"flying": 2},
     },
 }
 
@@ -77,6 +80,12 @@ static func might(id: String) -> int:
 ## the unit's own aptitude stat (0 for non-weapons).
 static func aptitude(id: String) -> int:
     return DEFS.get(id, {}).get("aptitude", 0)
+
+## Might multiplier the weapon carries against a defender movement
+## group ("effective": {"flying": 2}); 1 whenever nothing applies, so
+## callers can pass any id and any group.
+static func effectiveness(id: String, move_type: String) -> int:
+    return DEFS.get(id, {}).get("effective", {}).get(move_type, 1)
 
 ## A weapon's reach as a [min, max] pair of Manhattan distances —
 ## "range" in DEFS is an int (exact distance) or already such a pair.

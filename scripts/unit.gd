@@ -24,7 +24,7 @@ const TEAM_ROW : Dictionary = {
 }
 
 # ── Designer-facing properties (set in the Inspector) ──────────────────────────
-@export_enum("archer", "cavalier", "cleric", "knight", "lord", "mage", "soldier")
+@export_enum("archer", "cavalier", "cleric", "knight", "lord", "mage", "pegasus_knight", "soldier")
 var unit_class : String = "lord":
     set(value):
         unit_class = value

@@ -990,6 +990,30 @@ func _move_then_forecast(unit: Area2D, launch: Vector2i, target_cell: Vector2i) 
 
 var _forecast_side_left : bool = false
 
+## Forecast Might numbers turn this green while an effectiveness
+## multiplier inflates them (iron bow vs a flier) — distinct from the
+## yellow skill badge, which multiplies blows, not might.
+const EFFECTIVE_COLOR : Color = Color(0.35, 0.9, 0.4)
+
+## True when the attacker's equipped weapon carries an effectiveness
+## multiplier against the defender's movement group. Unarmed units
+## never qualify.
+func _is_effective_against(attacker: Area2D, defender: Area2D) -> bool:
+    var equipped : int = Items.equipped_index(attacker)
+    if equipped < 0:
+        return false
+    return Items.effectiveness(attacker.inventory[equipped],
+            ClassStats.move_type(defender.unit_class)) > 1
+
+## Paints a Might label green while effectiveness inflates its number;
+## restores the theme colour otherwise — the labels live on, reused by
+## every forecast.
+func _tint_effective(label: Label, effective: bool) -> void:
+    if effective:
+        label.add_theme_color_override("font_color", EFFECTIVE_COLOR)
+    else:
+        label.remove_theme_color_override("font_color")
+
 ## Display name of the unit's equipped weapon, for the forecast and the
 ## hover info card.
 func _equipped_weapon_name(unit: Area2D) -> String:
@@ -1003,6 +1027,7 @@ func _show_forecast(attacker: Area2D, defender: Area2D) -> void:
     fc_def_weapon.text = _equipped_weapon_name(defender)
     fc_blue_hp.text    = str(attacker.hp)
     fc_blue_mt.text    = str(_attack_damage(attacker, defender))
+    _tint_effective(fc_blue_mt, _is_effective_against(attacker, defender))
     # A skill-driven attack (Brave Strike) badges the blue Might with
     # its strike count in yellow; plain attacks hide the badge. Only the
     # attacker's side ever multiplies — counters stay single.
@@ -1013,9 +1038,9 @@ func _show_forecast(attacker: Area2D, defender: Area2D) -> void:
     # A defender whose weapon can't reach back across this engagement
     # distance won't counter, so its Might column reads "--" (the
     # attacker always reaches — targeting only offered cells in reach).
-    fc_red_mt.text     = str(_attack_damage(defender, attacker)) \
-            if _can_strike_at(defender, _manhattan(attacker.cell, defender.cell)) \
-            else "--"
+    var counters : bool = _can_strike_at(defender, _manhattan(attacker.cell, defender.cell))
+    fc_red_mt.text = str(_attack_damage(defender, attacker)) if counters else "--"
+    _tint_effective(fc_red_mt, counters and _is_effective_against(defender, attacker))
     # Side-pick from the attacker's on-SCREEN position (camera-aware):
     # the panel goes to whichever half the attacker isn't on.
     var screen_x : float = attacker.get_global_transform_with_canvas().origin.x
@@ -1410,9 +1435,17 @@ var _slash_player  : AudioStreamPlayer  # created in _ready
 ## Fired when an engagement fully resolves; _run_enemy_phase awaits it.
 signal combat_finished
 
-func _attack_damage(attacker, _defender) -> int:
+## Damage one blow deals: attack + equipped weapon might, doubled etc.
+## on the MIGHT alone when the weapon is effective against the
+## defender's movement group (GBA-style: the iron bow's 6 becomes 12
+## against fliers, the wielder's attack stat never multiplies).
+func _attack_damage(attacker, defender) -> int:
     var equipped : int = Items.equipped_index(attacker)
-    var might    : int = Items.might(attacker.inventory[equipped]) if equipped >= 0 else 0
+    if equipped < 0:
+        return attacker.attack  # unarmed: bare attack, nothing to multiply
+    var id    : String = attacker.inventory[equipped]
+    var might : int    = Items.might(id) \
+            * Items.effectiveness(id, ClassStats.move_type(defender.unit_class))
     return attacker.attack + might  # defender's def subtracts here later
 
 func _manhattan(a: Vector2i, b: Vector2i) -> int:

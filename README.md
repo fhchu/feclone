@@ -52,6 +52,8 @@ forests. All of it lives in one balance file, `scripts/class_stats.gd`
 (`MOVE_COSTS` for the group price tables, `move_type` on each class),
 safe to edit freely: unknown terrain names cost 1, and `IMPASSABLE`
 prices a terrain out entirely for a group (mounted vs mountains).
+Fliers (the pegasus knight) pay 1 for everything — the planned walls
+terrain will be their one exception.
 Adding a new terrain type is: add its art and tile, set the tile's
 `terrain` string, and add a column to the `MOVE_COSTS` rows.
 
@@ -65,7 +67,8 @@ Adding a new terrain type is: add its art and tile, set the tile's
    on load regardless.
 3. With the unit selected, set its properties in the Inspector:
    - **Unit Class** — lord, archer, cleric, cavalier, knight, mage,
-     soldier (the sprite updates immediately in the editor)
+     pegasus knight, soldier (the sprite updates immediately in the
+     editor)
    - **Sprite Variant** — male/female, for classes that offer both
      (currently the lord)
    - **Character Name** — optional unique name ("Lyon"); empty units
@@ -216,9 +219,11 @@ Dropping (or clicking) on a red enemy moves the unit into range and the
 two bump at each other: the attacker strikes first, then the defender
 counterattacks if it survived and its own weapon reaches back (the
 forecast shows "--" for a defender that can't). Damage is attack +
-weapon might — rpg stats (def/crit/…) come later, as does a
-weapon-choice menu before the strike. Undo reverts a whole engagement,
-including deaths.
+weapon might; a weapon *effective* against the defender's movement
+group multiplies its might (the iron bow doubles to 12 against
+fliers). Rpg stats (def/crit/…) come later, as does a weapon-choice
+menu before the strike. Undo reverts a whole engagement, including
+deaths.
 
 ### Items
 

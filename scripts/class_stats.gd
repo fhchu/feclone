@@ -15,8 +15,10 @@ const IMPASSABLE : int = 99
 # What each movement group pays to ENTER a tile of each terrain.
 # Terrain names match the "terrain" custom data on the ground TileSet
 # (assets/ground_tiles.tres). Unknown/unlisted terrain costs 1, so new
-# tiles can't break older groups. Mountain tiles and flying classes
-# don't exist yet — their rows are ready for when they do.
+# tiles can't break older groups. Mountain tiles don't exist yet —
+# their column is ready for when they do. Flying pays 1 for everything;
+# the planned walls terrain will be its one exception (impassable even
+# from the air).
 const MOVE_COSTS : Dictionary = {
     "infantry": {"plains": 1, "forest": 2, "mountain": 4},
     "mounted":  {"plains": 1, "forest": 3, "mountain": IMPASSABLE},
@@ -41,6 +43,7 @@ const STATS : Dictionary = {
     "cavalier": {"mov": 7, "move_type": "mounted",  "sprites": {"male": 3}},
     "knight":   {"mov": 4, "move_type": "infantry", "sprites": {"male": 4}},
     "mage":     {"mov": 5, "move_type": "magic",    "sprites": {"male": 5}},   # placeholder class
+    "pegasus_knight": {"mov": 7, "move_type": "flying", "sprites": {"male": Vector2i(1, 1)}},
     "soldier":  {"mov": 5, "move_type": "infantry", "sprites": {"male": 5}},   # pawn art for now
 }
 
