@@ -25,7 +25,13 @@ unit_class = "cavalier"
 [node name="Ally3" parent="Units" unique_id=1076422976 instance=ExtResource("5_unit")]
 position = Vector2(416, 992)
 unit_class = "archer"
+max_hp = 20
 inventory = Array[String](["iron_bow"])
+
+[node name="Ally4" parent="Units" unique_id=1686051268 instance=ExtResource("5_unit")]
+position = Vector2(480, 1056)
+unit_class = "cleric"
+inventory = Array[String](["heal"])
 
 [node name="Enemy1" parent="Units" unique_id=1663286586 instance=ExtResource("5_unit")]
 position = Vector2(352, 96)
@@ -41,3 +47,4 @@ team = "red"
 position = Vector2(480, 800)
 unit_class = "pegasus_knight"
 team = "red"
+inventory = Array[String](["iron_lance"])

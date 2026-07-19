@@ -238,6 +238,16 @@ re-instance their units, so charges reset every level. Healing items
 grey out at full health. One item exists so far: the **Potion** —
 heals 10 (capped at max hp), three uses per level.
 
+Staffs are their own category, neither weapon nor consumable: they
+appear in the item list (name only) but can't be equipped or used
+there. Instead, when a unit carrying one has an injured ally within
+staff range after moving, a **Staff** entry appears in its action menu
+(under Attack); pick it and click the ally — the heal lands on the
+first click, no battle forecast, and takes the unit's turn. One staff
+exists so far: **Heal** — range 1, restores 8 + half the healer's
+attack. Full-health allies are never valid targets, and enemies never
+are.
+
 To give a unit items: select it in a level scene and add item ids to
 its **Inventory** array in the Inspector. Ids, effects, and use counts
 live in `scripts/items.gd` — new items are new entries in that table.

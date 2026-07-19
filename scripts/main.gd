@@ -27,6 +27,7 @@ extends Node2D
 @onready var banner_label : Label          = $UI/PhaseBanner/BannerLabel
 @onready var action_menu     : PanelContainer = $UI/ActionMenu
 @onready var attack_button   : Button         = $UI/ActionMenu/VBoxContainer/AttackButton
+@onready var staff_button    : Button         = $UI/ActionMenu/VBoxContainer/StaffButton
 @onready var wait_button     : Button         = $UI/ActionMenu/VBoxContainer/WaitButton
 @onready var skills_button   : Button         = $UI/ActionMenu/VBoxContainer/SkillsButton
 @onready var items_button    : Button         = $UI/ActionMenu/VBoxContainer/ItemsButton
@@ -172,6 +173,7 @@ var _skills_open            : bool       = false  # skills panel is showing (mod
 var _targeting              : bool       = false  # picking an attack target
 var _targetable             : Dictionary = {}     # enemy cell → true while targeting
 var _pending_skill          : String     = ""     # skill driving the targeting ("" = plain attack)
+var _pending_staff          : bool       = false  # targeting picks a heal target, not an enemy
 var _forecast_target        : Variant    = null   # cell whose forecast is up; next click commits
 var _menu_cancel_unit       : Variant    = null   # unit whose menu this press cancelled
 var _map_menu_open          : bool       = false  # End Turn map menu is showing
@@ -202,6 +204,7 @@ func _ready() -> void:
     history_confirm.pressed.connect(_on_history_confirm)
     history_panel.get_node("VBoxContainer/Buttons/CancelButton").pressed.connect(_on_history_cancel)
     attack_button.pressed.connect(_on_attack_pressed)
+    staff_button.pressed.connect(_on_staff_pressed)
     wait_button.pressed.connect(_on_wait_pressed)
     items_button.pressed.connect(_on_items_pressed)
     items_close.pressed.connect(_close_items_menu)
@@ -336,13 +339,9 @@ func _get_reach_costs(unit, max_cost: int = -1) -> Dictionary:
             frontier.append(nxt)
     return costs
 
-## Every offset whose Manhattan distance lies within the unit's weapon
-## reach — the diamond ring(s) its strikes can land on. Reach comes from
-## the equipped weapon (Items.reach; bare fists are melee 1), so the
-## iron bow's flat 2 yields only the outer ring: the 8 cells exactly two
-## tiles out, never the adjacent 4.
-func _reach_offsets(unit: Area2D) -> Array:
-    var reach   : Array = Items.reach(unit)
+## Every offset whose Manhattan distance lies within [min, max] — the
+## diamond ring(s) a weapon strike or staff use can land on.
+func _ring_offsets(reach: Array) -> Array:
     var offsets : Array = []
     for d in range(reach[0], reach[1] + 1):
         for dx in range(-d, d + 1):
@@ -351,6 +350,12 @@ func _reach_offsets(unit: Area2D) -> Array:
             if dy != 0:
                 offsets.append(Vector2i(dx, -dy))
     return offsets
+
+## _ring_offsets of the unit's equipped weapon (Items.reach; bare fists
+## are melee 1) — the iron bow's flat 2 yields only the outer ring: the
+## 8 cells exactly two tiles out, never the adjacent 4.
+func _reach_offsets(unit: Area2D) -> Array:
+    return _ring_offsets(Items.reach(unit))
 
 ## Every cell the unit could strike but not stand on: the red fringe its
 ## weapon's reach beyond the movement range, whether or not anything is
@@ -856,7 +861,9 @@ func _place_info_panel() -> void:
 # only lists when an enemy stands within weapon reach of the unit's
 # current cell; picking it swaps the menu for target selection (red
 # squares on the enemies in reach — click one to strike, click anything
-# else to come back to the menu). Items joins these buttons later.
+# else to come back to the menu). Staff lists when an injured ally
+# stands within staff reach and runs the same target selection, minus
+# the forecast — its first click commits the heal.
 # Clicking anywhere OUTSIDE the open menu cancels the pending action:
 # the approach move is reverted and the unit returns to being merely
 # selected (the FE B-button). Menu buttons are Controls, so the GUI
@@ -870,6 +877,7 @@ func _open_action_menu(unit: Area2D, snapshot_taken: bool) -> void:
     _pending_snapshot_taken = snapshot_taken
     _menu_open              = true
     attack_button.visible   = not _enemies_in_reach(unit).is_empty()
+    staff_button.visible    = not _staff_targets(unit).is_empty()
     skills_button.visible   = not ClassStats.skills(unit.unit_class).is_empty()
     items_button.visible    = not unit.inventory.is_empty()
     action_menu.visible     = true
@@ -887,6 +895,7 @@ func _clear_pending() -> void:
     _targeting              = false
     _targetable             = {}
     _pending_skill          = ""
+    _pending_staff          = false
     _forecast_target        = null
     action_menu.visible     = false
     items_panel.visible     = false
@@ -903,9 +912,41 @@ func _enemies_in_reach(unit: Area2D) -> Array:
             cells.append(n)
     return cells
 
+## Cells holding injured allies within the unit's first staff's reach —
+## the Staff command's valid targets (full-health allies need nothing,
+## and range 1 starts at distance 1, so the healer never targets
+## itself).
+func _staff_targets(unit: Area2D) -> Array:
+    var staff : int = Items.staff_index(unit)
+    if staff < 0:
+        return []
+    var cells : Array = []
+    for offset in _ring_offsets(Items.reach_of(unit.inventory[staff])):
+        var n : Vector2i = unit.cell + offset
+        if unit_map.has(n) and unit_map[n].team == unit.team \
+                and unit_map[n].hp < unit_map[n].max_hp:
+            cells.append(n)
+    return cells
+
 ## Attack: hide the menu and mark the enemies in reach for targeting.
 func _on_attack_pressed() -> void:
     _enter_targeting("")
+
+## Staff: hide the menu and mark the injured allies in staff reach for
+## targeting — the same picking loop as Attack, except the first click
+## commits: there is no battle forecast because nothing answers a heal.
+func _on_staff_pressed() -> void:
+    if _pending_unit == null:
+        return
+    _menu_open              = false
+    action_menu.visible     = false
+    _pending_staff          = true
+    _targeting              = true
+    _targetable             = {}
+    _forecast_target        = null
+    for cell in _staff_targets(_pending_unit):
+        _targetable[cell] = true
+    overlay.show_attack_cells(_targetable.keys())
 
 ## Shared entry to target-picking — from Attack ("" = plain attack) or
 ## from an attack-type skill, whose id tags the whole loop: the forecast
@@ -930,14 +971,26 @@ func _enter_targeting(skill_id: String) -> void:
 
 ## A click while picking a target: the first click on a marked enemy
 ## raises the battle forecast, a second click on the same enemy commits
-## the attack (clicking another target re-forecasts it); anything else
-## returns to the action menu.
+## the attack (clicking another target re-forecasts it); staff targets
+## commit on the first click — no forecast between choice and heal.
+## Anything else returns to the action menu.
 func _handle_target_click(cell: Vector2i) -> void:
     var unit          : Area2D = _pending_unit
     var have_snapshot : bool   = _pending_snapshot_taken
     var skill         : String = _pending_skill
     if _targetable.has(cell):
-        if _forecast_target == cell:
+        if _pending_staff:
+            var target : Area2D = unit_map[cell]
+            var label  : String = "%s heals %s" % [unit.display_name(), target.display_name()]
+            _clear_pending()
+            overlay.clear_all()
+            if have_snapshot:
+                _set_last_label(label)
+            else:
+                _push_undo_snapshot(label)
+            target.heal(_staff_heal_amount(unit))
+            _finish_action(unit)
+        elif _forecast_target == cell:
             var defender : Area2D = unit_map[cell]
             if have_snapshot:
                 _set_last_label(_attack_label(unit, defender, skill))
@@ -948,11 +1001,12 @@ func _handle_target_click(cell: Vector2i) -> void:
             _forecast_target = cell
             _show_forecast(unit, unit_map[cell])
     else:
-        # Backing out of targeting drops the skill too — nothing was
-        # spent, so re-entering is free.
+        # Backing out of targeting drops the skill/staff too — nothing
+        # was spent, so re-entering is free.
         _targeting              = false
         _targetable             = {}
         _pending_skill          = ""
+        _pending_staff          = false
         _forecast_target        = null
         forecast_panel.visible  = false
         overlay.clear_range()
@@ -1135,7 +1189,7 @@ func _on_floating_action_pressed() -> void:
             return
         if Items.is_weapon(_pending_unit.inventory[index]):
             _on_equip_pressed(index)
-        else:
+        elif not Items.is_staff(_pending_unit.inventory[index]):
             _on_item_pressed(index)
     elif _skills_open and _skill_selected >= 0:
         _use_skill(_skill_selected)
@@ -1170,7 +1224,10 @@ func _rebuild_item_list(unit: Area2D) -> void:
     for index in mini(unit.inventory.size(), Items.MAX_SLOTS):
         var id  : String = unit.inventory[index]
         var btn : Button = Button.new()
-        btn.text = Items.display_name(id) if Items.is_weapon(id) \
+        # Weapons AND staffs list by name alone (no durability yet);
+        # only consumables carry a charge readout.
+        btn.text = Items.display_name(id) \
+                if Items.is_weapon(id) or Items.is_staff(id) \
                 else "%s %d/%d" % [Items.display_name(id),
                         unit.inventory_uses[index], Items.max_uses(id)]
         if index == equipped:
@@ -1188,12 +1245,18 @@ func _rebuild_item_list(unit: Area2D) -> void:
 func _on_item_row_pressed(index: int) -> void:
     if not _items_open or _pending_unit == null:
         return
+    var id : String = _pending_unit.inventory[index]
+    if Items.is_staff(id):
+        # Staffs list here but act through the unit menu's Staff command
+        # — no Equip/Use to offer, so the click just drops any selection.
+        _item_selected                 = -1
+        floating_action_button.visible = false
+        return
     if _item_selected == index:
         _item_selected                 = -1
         floating_action_button.visible = false
         return
     _item_selected = index
-    var id : String = _pending_unit.inventory[index]
     _place_floating_action(items_panel, _item_rows[index],
             "Equip" if Items.is_weapon(id) else "Use")
 
@@ -1243,7 +1306,9 @@ func _on_item_pressed(index: int) -> void:
     var have_snapshot : bool   = _pending_snapshot_taken
     if index >= unit.inventory.size():
         return
-    var id    : String = unit.inventory[index]
+    var id : String = unit.inventory[index]
+    if Items.is_staff(id):
+        return  # staffs act through the Staff command, never Use
     var label : String = "%s uses %s" % [unit.display_name(), Items.display_name(id)]
     _clear_pending()
     if have_snapshot:
@@ -1447,6 +1512,14 @@ func _attack_damage(attacker, defender) -> int:
     var might : int    = Items.might(id) \
             * Items.effectiveness(id, ClassStats.move_type(defender.unit_class))
     return attacker.attack + might  # defender's def subtracts here later
+
+## Health the Staff command restores: the staff's base power + half the
+## wielder's attack, rounded down — _attack_damage's support-side
+## sibling (a dedicated magic stat can take attack's place here later).
+func _staff_heal_amount(healer: Area2D) -> int:
+    var staff : int = Items.staff_index(healer)
+    var base  : int = Items.staff_base(healer.inventory[staff]) if staff >= 0 else 0
+    return base + floori(healer.attack / 2.0)
 
 func _manhattan(a: Vector2i, b: Vector2i) -> int:
     return absi(a.x - b.x) + absi(a.y - b.y)

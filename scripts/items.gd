@@ -44,6 +44,16 @@ const DEFS : Dictionary = {
         "range": 2,
         "effective": {"flying": 2},
     },
+    # Staffs (marked by "staff" = base healing power) are neither
+    # weapons nor use-from-items consumables: they list in the items
+    # menu but act through the unit menu's Staff command (main.gd).
+    # Reach reuses "range"; no "uses" while durability is undecided,
+    # same as weapons.
+    "heal": {
+        "name": "Heal",
+        "staff": 8,
+        "range": 1,
+    },
 }
 
 ## Display name for an id. Falls back to the raw id so a typo in a level
@@ -80,6 +90,25 @@ static func might(id: String) -> int:
 ## the unit's own aptitude stat (0 for non-weapons).
 static func aptitude(id: String) -> int:
     return DEFS.get(id, {}).get("aptitude", 0)
+
+## Staffs are the items carrying the "staff" key. They are never
+## wielded as weapons and never Use-d from the items menu — the unit
+## menu's Staff command drives them.
+static func is_staff(id: String) -> bool:
+    return DEFS.get(id, {}).has("staff")
+
+## Base healing power of a staff (0 for non-staffs); the wielder's
+## stats add on top in main.gd's _staff_heal_amount.
+static func staff_base(id: String) -> int:
+    return DEFS.get(id, {}).get("staff", 0)
+
+## Inventory index of the unit's first staff, or -1 — the staff the
+## Staff command wields, mirroring equipped_index's first-weapon rule.
+static func staff_index(unit) -> int:
+    for i in unit.inventory.size():
+        if is_staff(unit.inventory[i]):
+            return i
+    return -1
 
 ## Might multiplier the weapon carries against a defender movement
 ## group ("effective": {"flying": 2}); 1 whenever nothing applies, so

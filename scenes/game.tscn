@@ -176,6 +176,12 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Attack"
 
+[node name="StaffButton" type="Button" parent="UI/ActionMenu/VBoxContainer"]
+custom_minimum_size = Vector2(200, 48)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Staff"
+
 [node name="SkillsButton" type="Button" parent="UI/ActionMenu/VBoxContainer"]
 custom_minimum_size = Vector2(200, 48)
 layout_mode = 2
