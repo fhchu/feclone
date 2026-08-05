@@ -1788,8 +1788,19 @@ func _open_history() -> void:
     _history_selected = -1
     _history_present  = _capture_snapshot("Present")
     history_confirm.disabled = true
-    _deselect_hover_only()
+    # Drop any live selection BEFORE time-travelling. reachable_cells and
+    # attack_targets describe the board as it stands now; a jump moves
+    # units out from under them, and nothing recomputes them on the way
+    # back out — a stale range would let the unit walk somewhere it can't
+    # reach, and a stale attack target would point at an empty cell.
+    # Hover is nulled first so _deselect's preview refresh clears too.
+    _hovered_unit = null
+    _deselect()
     for child in history_list.get_children():
+        # Deferred free alone leaves the old rows parented (and in the
+        # button group) for the rest of the frame — unparent them now so
+        # a re-opened browser can never list a stale entry.
+        history_list.remove_child(child)
         child.queue_free()
     # Newest first; enemy snapshots are pruned each turn and never listed.
     for i in range(undo_stack.size() - 1, -1, -1):
@@ -1807,10 +1818,6 @@ func _open_history() -> void:
     history_panel.visible = true
 
 var _history_group : ButtonGroup = ButtonGroup.new()
-
-func _deselect_hover_only() -> void:
-    _hovered_unit = null
-    _refresh_unit_info()
 
 ## Clicking an entry: preview that snapshot on the board.
 func _on_history_entry(index: int) -> void:
