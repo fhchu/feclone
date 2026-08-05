@@ -44,6 +44,18 @@ const DEFS : Dictionary = {
         "range": 2,
         "effective": {"flying": 2},
     },
+    # The first magic weapon: "damage_type": "magic" swaps combat onto
+    # the magic/res stat pair (see _attack_damage). Numbers are a
+    # placeholder and it ships in no level — it only matters once a unit
+    # is actually handed one, so it's here as the working example of the
+    # magic/res groundwork, not as balanced content.
+    "fire": {
+        "name": "Fire",
+        "might": 5,
+        "aptitude": 2,
+        "range": 1,
+        "damage_type": "magic",
+    },
     # Staffs (marked by "staff" = base healing power) are neither
     # weapons nor use-from-items consumables: they list in the items
     # menu but act through the unit menu's Staff command (main.gd).
@@ -115,6 +127,13 @@ static func staff_index(unit) -> int:
 ## callers can pass any id and any group.
 static func effectiveness(id: String, move_type: String) -> int:
     return DEFS.get(id, {}).get("effective", {}).get(move_type, 1)
+
+## A weapon's damage type picks the stat pair combat uses: the default
+## "physical" pits the wielder's attack against the target's def, while
+## "magic" pits magic against res (see _attack_damage in main.gd). The
+## Fire tome carries it; another tome is just another such entry.
+static func is_magic(id: String) -> bool:
+    return DEFS.get(id, {}).get("damage_type", "") == "magic"
 
 ## A weapon's reach as a [min, max] pair of Manhattan distances —
 ## "range" in DEFS is an int (exact distance) or already such a pair.

@@ -1500,18 +1500,24 @@ var _slash_player  : AudioStreamPlayer  # created in _ready
 ## Fired when an engagement fully resolves; _run_enemy_phase awaits it.
 signal combat_finished
 
-## Damage one blow deals: attack + equipped weapon might, doubled etc.
-## on the MIGHT alone when the weapon is effective against the
-## defender's movement group (GBA-style: the iron bow's 6 becomes 12
-## against fliers, the wielder's attack stat never multiplies).
+## Damage one blow deals. The wielder's offense (attack, or magic for a
+## magic-type weapon) plus the weapon's might — the MIGHT alone doubled
+## etc. when effective against the defender's movement group (GBA-style:
+## the iron bow's 6 becomes 12 vs fliers, the offense stat never
+## multiplies) — less the defender's matching defense (def, or res vs a
+## magic weapon). Unarmed blows are physical and carry no might. Never
+## below 0: heavier defense chips damage to nothing, it doesn't heal.
 func _attack_damage(attacker, defender) -> int:
     var equipped : int = Items.equipped_index(attacker)
     if equipped < 0:
-        return attacker.attack  # unarmed: bare attack, nothing to multiply
-    var id    : String = attacker.inventory[equipped]
-    var might : int    = Items.might(id) \
+        return maxi(0, attacker.attack - defender.def)  # unarmed: bare physical
+    var id      : String = attacker.inventory[equipped]
+    var magical : bool   = Items.is_magic(id)
+    var offense : int    = attacker.magic if magical else attacker.attack
+    var defense : int    = defender.res   if magical else defender.def
+    var might   : int    = Items.might(id) \
             * Items.effectiveness(id, ClassStats.move_type(defender.unit_class))
-    return attacker.attack + might  # defender's def subtracts here later
+    return maxi(0, offense + might - defense)
 
 ## Health the Staff command restores: the staff's base power + half the
 ## wielder's attack, rounded down — _attack_damage's support-side

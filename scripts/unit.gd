@@ -61,9 +61,20 @@ var move_range : int:
         hp = value  # editor shows a full bar; runtime starts at full health
         queue_redraw()
 
-## Base attack power. Combat damage is attack + the equipped weapon's
-## might (see _attack_damage in main.gd), so an unarmed unit deals this.
+## Physical offense. A physical blow deals attack + the equipped
+## weapon's might − the target's def (see _attack_damage in main.gd),
+## so an unarmed unit deals its attack less the target's def.
 @export_range(0, 99) var attack : int = 1
+
+## Physical defense — subtracted from incoming physical damage.
+## Defaults to 0, so weapon balance is unchanged until a level raises it.
+@export_range(0, 99) var def : int = 0
+
+## Magic offense / defense — the attack/def pair a MAGIC weapon uses
+## instead (damage_type "magic" in items.gd). Groundwork: no magic
+## weapon ships yet, so these sit at 0 and never come into play.
+@export_range(0, 99) var magic : int = 0
+@export_range(0, 99) var res : int = 0
 
 ## SP (skill points) generated every time this unit strikes or is
 ## struck; the equipped weapon's aptitude adds on top (see _sp_gain in

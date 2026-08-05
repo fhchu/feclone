@@ -218,12 +218,16 @@ adjacent enemy, and its red ring skips the four adjacent tiles.
 Dropping (or clicking) on a red enemy moves the unit into range and the
 two bump at each other: the attacker strikes first, then the defender
 counterattacks if it survived and its own weapon reaches back (the
-forecast shows "--" for a defender that can't). Damage is attack +
-weapon might; a weapon *effective* against the defender's movement
-group multiplies its might (the iron bow doubles to 12 against
-fliers). Rpg stats (def/crit/…) come later, as does a weapon-choice
-menu before the strike. Undo reverts a whole engagement, including
-deaths.
+forecast shows "--" for a defender that can't). Damage is the
+attacker's **attack** plus weapon might, minus the defender's **def**;
+a weapon *effective* against the defender's movement group multiplies
+its might first (the iron bow doubles to 12 against fliers), and
+defense can only chip damage down to 0, never below. Magic weapons
+(`damage_type: "magic"`) swap in the **magic** and **res** stats in
+place of attack and def; the **Fire** tome is the first, though it
+ships in no level yet — add its id to a unit's inventory to try it.
+Crit and a weapon-choice menu come later. Undo reverts a whole
+engagement, including deaths.
 
 ### Items
 
