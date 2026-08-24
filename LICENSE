@@ -1,0 +1,78 @@
+PROPRIETARY SOFTWARE LICENSE
+
+feclone
+Copyright (c) 2026 Felicity Chu. All rights reserved.
+
+This software is NOT open source. The source code is published publicly
+for the sole purpose of allowing it to be read and evaluated — for
+example by prospective employers, collaborators, or reviewers.
+
+1. SCOPE
+
+   "the Software" means the source code, scenes, configuration,
+   documentation, and original artwork in this repository authored by
+   the copyright holder. The pixel art in assets/ is original work of
+   the copyright holder and is covered by this license.
+
+   The audio files in assets/, and the default project icon (icon.svg),
+   are third-party works. They are NOT part of the Software and are NOT
+   licensed by this document; they remain subject to the licenses of
+   their respective creators. Nothing here claims ownership of them, and
+   nothing here grants you any rights to them.
+
+2. GRANT
+
+   You are permitted to:
+
+   (a) view and read the Software;
+   (b) clone or fork this repository, and build and run the Software
+       locally, solely to evaluate it for the purpose stated above.
+
+3. RESTRICTIONS
+
+   Except as stated in Section 2, you may not, without the prior
+   written permission of the copyright holder:
+
+   (a) copy, reproduce, or redistribute the Software, in whole or in
+       part, in source or compiled form;
+   (b) modify the Software or create derivative works from it;
+   (c) incorporate the Software, or any portion of it, into any other
+       project, product, or codebase, whether commercial or not;
+   (d) use the Software or any portion of it to train, fine-tune, or
+       evaluate machine learning models;
+   (e) sublicense, sell, rent, lease, or otherwise commercially exploit
+       the Software;
+   (f) remove or alter this notice or any copyright notice in the
+       Software.
+
+   Forking on a hosting platform for the purpose permitted in Section 2
+   does not by itself constitute redistribution; publishing, deploying,
+   or building upon such a fork does.
+
+4. RESERVATION OF RIGHTS
+
+   All rights not expressly granted are reserved by the copyright
+   holder. No right or license is granted by implication, estoppel, or
+   otherwise. Publication of this repository does not place the
+   Software in the public domain or grant any implied license.
+
+5. TERMINATION
+
+   The permissions in Section 2 terminate automatically if you breach
+   any term of this license. The copyright holder may revoke them at any
+   time and may cease publishing this repository at any time.
+
+6. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+   NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE
+   FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+   CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+   WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+7. CONTACT
+
+   For permission beyond the scope of this license, contact the
+   copyright holder through this repository.

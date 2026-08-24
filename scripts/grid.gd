@@ -2,8 +2,7 @@
 # Attached to the Overlay TileMapLayer.
 # Pure rendering — no game state. All tile indices reference overlay_tiles.png.
 # The grass ground is on the Ground TileMapLayer, filled by main.gd at startup.
-# Adapted from chess board.gd: "moves" became "range" (a set of reachable
-# cells rather than move dicts), and the grid size is configurable.
+# A "range" is a plain set of reachable cells; the grid size is configurable.
 
 extends TileMapLayer
 

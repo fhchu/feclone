@@ -1,271 +1,76 @@
 # feclone
 
-A Fire Emblem-style tactics game, built on art and architecture from the
-chess project.
+A grid-based tactics game in the Fire Emblem tradition, built in Godot 4
+with GDScript.
 
-## Level design guide (no programming required)
+![Level 1 — a lord selected, with reachable tiles in blue and the strike range beyond them in red](docs/level1.png)
 
-Levels live in `scenes/levels/` (`level1.tscn`, `level2.tscn`, …) and
-contain only designer content: a **Ground** terrain layer, a **Units**
-node with the placed units, and per-level metadata (like **Loss
-Conditions**) on the Level root. All UI and game logic live once in
-`scenes/game.tscn`, which loads levels into itself — so UI changes never
-touch level files, and level diffs are pure content. The tile sets are
-shared resources (`assets/ground_tiles.tres`), so new terrain types are
-one edit that every map inherits.
+## What it is
 
-To add a level: duplicate an existing level scene, edit it, and add its
-path to the list in `scripts/levels.gd` — the level select grid and the
-next-level progression both follow that list automatically.
+You command a small squad on a square grid. Play alternates between
+player and enemy phases, and each unit acts once per phase: move, then
+pick from an action menu — attack, heal an ally with a staff, spend SP
+on a class skill, use an item, or wait.
 
-Defeating every enemy clears the level and loads the next one (the
-level select screen after the last). The **Settings** button in the
-bottom-right corner opens a menu with Restart Level and Level Select.
+Selecting a unit floods the map with its options. Blue tiles are where
+it can walk — the cost of a tile depends on the terrain *and* on the
+unit's movement group, so a cavalier pays 3 to enter a forest that
+costs infantry 2, and a pegasus knight flies over both for 1. The red
+fringe beyond is what it can hit from there, drawn from the reach of
+the weapon it has equipped: swords and lances strike at 1, a bow only
+at exactly 2 — never adjacent, not even to counter.
 
-Losing triggers a Game Over screen with Undo Last Move / Restart /
-Level Select. Which defeats apply is per level: the **Loss Conditions**
-list on the Main node names them (just `all_units_dead` for now; things
-like `lord_dies` come later — see `scripts/loss_conditions.gd`). A
-level can stack several; any one of them ends it.
+Before you commit, a battle forecast shows the exchange: both weapons,
+both HP totals, the damage each side deals, and `--` where a defender
+can't strike back. Damage is attack plus weapon might minus the
+defender's defense — or magic against resistance for a tome — and a
+weapon effective against the target's movement group doubles its might
+first. Hovering an enemy previews its threat range; clicking one pins
+that range to the map, and pinning several merges them into a single
+outlined danger zone, so you can see exactly which tiles are safe before
+you step.
 
-Every level loops the shared battle theme. To give a map its own song
-(a desert theme, say), drop an audio file into the **Music** slot on
-the level scene's root node — empty means the default.
+Every action is undoable, not just the last one. The Undo button opens a
+browser of the whole match — every move and attack, marked off by turn,
+back to the first. Click any entry to preview that board, confirm to
+jump there for real.
 
-Everything below happens in the Godot editor, inside a level scene.
+**Built with:** Godot 4.7, GDScript, GL Compatibility renderer. Runs at
+a 640×640 design resolution that scales to any window, pixel-perfect at
+integer multiples.
 
-### Painting terrain
+## Design goals
 
-1. Select the **Ground** node in the Scene dock.
-2. The **TileMap** panel opens at the bottom — pick the grass or forest
-   tile and paint. Right-click erases.
-3. Unpainted cells are *off the map*: units can never enter them. The map
-   does not have to be rectangular — paint any shape you like.
+The interesting constraint is that **levels contain no code and no UI**.
+A level scene is a painted terrain layer, a handful of placed units, and
+a few metadata fields — everything else lives once in a persistent game
+shell that levels load into. Content is authored entirely in the Godot
+editor.
 
-Every tile names its terrain (a `terrain` custom data string on the
-shared TileSet: "plains", "forest"; "mountain" is reserved). What that
-terrain *costs* depends on the moving unit's class: classes belong to
-movement groups (infantry / mounted / magic / flying) and each group
-has its own price table — infantry crosses forest for 2, cavalry pays
-3, so a 7-move cavalier clears two forests and a plain but not three
-forests. All of it lives in one balance file, `scripts/class_stats.gd`
-(`MOVE_COSTS` for the group price tables, `move_type` on each class),
-safe to edit freely: unknown terrain names cost 1, and `IMPASSABLE`
-prices a terrain out entirely for a group (mounted vs mountains).
-Fliers (the pegasus knight) pay 1 for everything — the planned walls
-terrain will be their one exception.
-Adding a new terrain type is: add its art and tile, set the tile's
-`terrain` string, and add a column to the `MOVE_COSTS` rows.
+Everything that can be a table is a table. Classes, items, weapons,
+staves, skills, levels, and defeat conditions are each one registry file
+with one row per entry; the game dispatches on the keys a row carries.
+Adding a bow-wielding class, a tome, or a new loss condition is a new
+row, not a new branch.
 
-### Placing and moving units
+## Running it
 
-1. In the FileSystem dock, drag `scenes/unit.tscn` onto the **Units**
-   node (or right-click Units → *Instantiate Child Scene*).
-2. Drag the unit over the tile where it should start — units snap
-   themselves to tile centres while you drag them in the editor (in
-   every level, no snap configuration needed), and the game re-snaps
-   on load regardless.
-3. With the unit selected, set its properties in the Inspector:
-   - **Unit Class** — lord, archer, cleric, cavalier, knight, mage,
-     pegasus knight, soldier (the sprite updates immediately in the
-     editor)
-   - **Sprite Variant** — male/female, for classes that offer both
-     (currently the lord)
-   - **Character Name** — optional unique name ("Lyon"); empty units
-     display their class name
-   - **Team** — blue (player) or red (enemy)
-   - **Max Hp** — health (the bar under the unit; blue/red by team,
-     dark grey for missing health)
-4. Name unit nodes as neutral IDs (`Enemy1`, `Ally2`), never after
-   their class — names are save/undo keys and must stay meaningful
-   when you later re-class a squad. Names must be unique within a
-   level and shouldn't change once a level ships.
+Open the project folder in Godot 4.7 and press play, or:
 
-Movement and sprites are class data, not per-unit settings: lords move
-5, cavaliers 7, knights 4, soldiers 5 (see `scripts/class_stats.gd` —
-tune classes, add stats, or point classes at sprite columns there).
-4. To move a unit's starting position later, just drag it in the viewport.
-
-Red units can't be controlled by the player and block movement.
-
-### Phases
-
-Play alternates between **Player Phase** (blue banner) and **Enemy
-Phase** (red banner). Each unit acts once per phase — moving or
-attacking ends its turn and greys it out until the next phase. When
-every unit on a team has acted, the phase flips automatically. During
-the enemy phase each red unit acts on its own (see Enemy AI below).
-
-The **Undo** button opens the history browser: a left-side list of
-every player action ("Cavalier attacks Knight", "Lord waits") with a
-"— Turn N —" marker at each round, back to the start of the map.
-Clicking an entry previews that board state; **Confirm** jumps there
-for real (discarding what came after), **Cancel** — or re-clicking the
-Undo button — returns to the present. Enemy responses belong to the player action that provoked
-them and are never separate entries.
-
-Turns follow the classic FE rhythm: select a unit, move it, then a
-centered action menu resolves the turn. **Attack** (top option, only
-listed when an enemy is within reach of the new position) switches to
-target selection — red squares mark the enemies in range; click one to
-strike. The first click on a target raises the **battle forecast** — a
-side panel (opposite your unit's half of the map) showing both names
-and an HP/Might comparison, blue column for you, red for the enemy — 
-and a second click on the same enemy commits the attack. Clicking a
-different target re-forecasts it; clicking anywhere else returns to
-the menu. Attacking an enemy directly from the range view works the
-same way: the unit approaches, the forecast raises, and one more click
-seals it. **Wait** ends the turn on the spot. Clicking anywhere outside the menu cancels the whole
-action — the unit snaps back to where it started, still selected, as
-if it had only been clicked. Clicking the same unit cycles its states:
-select → in-place menu → back to selection. A move plus its menu
-action counts as a single undo step. Items joins the menu later.
-
-Clicking an empty tile with nothing selected opens the map menu, with
-**End Turn** as its bottom entry (future commands stack above it) —
-handing the round to the enemy with unmoved units staying put. It's a
-history entry like any action, so it can be undone or jumped past.
-
-Dropping a dragged unit directly onto a red-fringe enemy still performs
-the quick move-and-attack without the menu.
-
-### Enemy AI
-
-Each red unit picks its behaviour from two dropdowns in the Inspector
-(**Enemy AI** group), one per half of the decision:
-
-- **Ai Movement** — when the unit commits to moving.
-  `guard` (default): holds position until a player unit enters its
-  attack range (movement + weapon reach).
-  `aggressive`: hunts from turn one — marches along the cheapest path
-  toward whichever player unit is fewest movement-turns away, and
-  attacks as soon as someone is in reach.
-- **Ai Targeting** — who it attacks once engaged.
-  `default`: priority is can-kill, then most damage, then least
-  health, then closest.
-
-More behaviours (thieves fleeing with loot, bosses holding thrones,
-reinforcements rushing the front) will appear in these dropdowns as
-they're implemented — mixing the two halves per unit is the point.
-
-### Display & camera
-
-The window can be resized, maximised, or fullscreened to any
-resolution: the 640×640 design space scales up (letterboxed square),
-UI text re-renders crisply at the real resolution, and the pixel art
-stays hard-edged via nearest-neighbour filtering (pixel-perfect at
-integer scales: 1280, 1920, 2560…).
-
-One screen shows exactly a 10×10 map — the minimum map size, filling
-the view with no border. Bigger maps scroll: pressing the mouse
-against the screen edge pans the camera (the mouse stands in for the
-cursor), clamped to the map's edges; the corner buttons sit outside
-the thin scroll band, so reaching them never moves the view. Maps should start at the
-scene origin and be at least 10 tiles on each axis.
-
-### Pacing
-
-Units walk their movement paths tile-by-tile (player and enemy alike).
-To speed the whole game up, select the **Main** node and raise
-**Animation Speed** in the Inspector — 1.5 or 2.0 fast-forwards walking,
-combat, banners, and enemy pacing uniformly. It ships at 1.0.
-
-### Sound
-
-Every UI button plays the shared select sound when clicked. This is
-automatic: a global watcher (`scripts/ui_sfx.gd`, autoloaded as
-`UiSfx`) hooks each button as it enters the scene tree, so new buttons
-and menus need no wiring. To silence a specific button, give it a
-`no_click_sfx` metadata entry in the Inspector.
-
-Combat plays a slash as each blow lands — the strike and, if the
-defender survives, the counterattack.
-
-Music: `assets/battle.wav` loops throughout every level (restarts and
-same-song level changes don't interrupt it). A level's **Music**
-export overrides the track; the loop point is baked into the wav
-import settings.
-
-### Unit info
-
-Hovering any unit (either team) shows a neutral greyscale card in the
-top-left corner: portrait (the map sprite until real portraits exist),
-name (class name for now; unique characters get real names later), and
-current/max hp with a bar. It hides while a unit is selected or
-anything else owns the screen.
-
-### Danger zones
-
-Hovering any unit — yours or theirs — faintly previews its movement
-and strike range. Clicking an enemy (with nothing selected) toggles it
-into danger tracking: the unit tints dark red and every tile any
-tracked enemy could strike is shaded translucent grey, outlined in red
-along the outer boundary only — toggling more enemies merges their
-zones into one outline. The **Danger Zone** checkbox (bottom-right, stacked above
-the Settings button) displays every enemy's
-combined zone at once without tinting anyone, and stays on across
-levels; individual tracking works on top of it. Zones update live as
-units move or fall.
-
-### Combat
-
-When a player unit is selected, its whole strike range beyond the blue
-movement tiles glows red; enemies standing anywhere in that red fringe
-can be attacked. Attack range comes from the equipped weapon (the
-`range` entry in `scripts/items.gd`): iron swords and lances reach 1,
-the iron bow exactly 2 — so a bow can neither attack nor counter an
-adjacent enemy, and its red ring skips the four adjacent tiles.
-Dropping (or clicking) on a red enemy moves the unit into range and the
-two bump at each other: the attacker strikes first, then the defender
-counterattacks if it survived and its own weapon reaches back (the
-forecast shows "--" for a defender that can't). Damage is the
-attacker's **attack** plus weapon might, minus the defender's **def**;
-a weapon *effective* against the defender's movement group multiplies
-its might first (the iron bow doubles to 12 against fliers), and
-defense can only chip damage down to 0, never below. Magic weapons
-(`damage_type: "magic"`) swap in the **magic** and **res** stats in
-place of attack and def; the **Fire** tome is the first, though it
-ships in no level yet — add its id to a unit's inventory to try it.
-Crit and a weapon-choice menu come later. Undo reverts a whole
-engagement, including deaths.
-
-### Items
-
-Units can carry up to five items. When a unit with any opens its action
-menu, an **Items** entry sits between Attack and Wait; it swaps the menu
-for the item list (a shorter panel when fewer are carried). The × — or
-clicking anywhere outside — returns to the action menu with nothing
-spent. Using an item takes the unit's turn, and undo returns both the
-charge and its effect. Items carry limited uses, shown on their button
-("Potion 2/3"); spending the last one removes the item. Levels
-re-instance their units, so charges reset every level. Healing items
-grey out at full health. One item exists so far: the **Potion** —
-heals 10 (capped at max hp), three uses per level.
-
-Staffs are their own category, neither weapon nor consumable: they
-appear in the item list (name only) but can't be equipped or used
-there. Instead, when a unit carrying one has an injured ally within
-staff range after moving, a **Staff** entry appears in its action menu
-(under Attack); pick it and click the ally — the heal lands on the
-first click, no battle forecast, and takes the unit's turn. One staff
-exists so far: **Heal** — range 1, restores 8 + half the healer's
-attack. Full-health allies are never valid targets, and enemies never
-are.
-
-To give a unit items: select it in a level scene and add item ids to
-its **Inventory** array in the Inspector. Ids, effects, and use counts
-live in `scripts/items.gd` — new items are new entries in that table.
-
-## Running headless checks
-
-The Godot binary (Steam install):
-
-```
-"/Users/felicity/Library/Application Support/Steam/steamapps/common/Godot Engine/Godot.app/Contents/MacOS/Godot" --headless --path . --quit-after 10
+```bash
+godot --path .
 ```
 
-A headless run that played any audio (which now includes every boot,
-since level music starts immediately) ends with `ObjectDB instances
-were leaked` / `resources still in use` warnings naming the audio
-streams. That's a headless-only artifact: the dummy audio driver never
-runs the mix pass that releases playbacks. Windowed runs exit clean.
+## Documentation
+
+[**DESIGN.md**](DESIGN.md) is the full manual — the code map, how the
+systems fit together, how to author a level without programming, and
+what's planned but not yet built.
+
+## License
+
+Proprietary. See [LICENSE](LICENSE) — the source is public so it can be
+read and evaluated, but it is not open source, and no permission is
+granted to copy, modify, or reuse it. The code and the pixel art are
+mine and covered by that license; the bundled audio and the default
+Godot project icon are third-party works under their own licenses.

@@ -27,11 +27,11 @@ const MOVE_COSTS : Dictionary = {
 }
 
 # "sprites" maps variant → sprites_unit_map.png cell. The sheet is
-# stacked blue/red row-PAIRS: a bare int is a column on the first pair
-# (the original chess-piece art), a Vector2i is (column, pair) for art
-# on the lower pairs — the archer's (0, 1) is the first column of the
-# second blue/red pair. Cells can be shared between classes (soldier
-# borrows the pawn art until it gets its own) and a class can offer
+# stacked blue/red row-PAIRS: a bare int is a column on the first pair,
+# a Vector2i is (column, pair) for art on the lower pairs — the
+# archer's (0, 1) is the first column of the second blue/red pair.
+# Cells can be shared between classes (soldier and mage sit on the
+# same cell until the soldier gets its own) and a class can offer
 # several variants (the lord's male/female pair).
 # "skills" lists the class's skill ids (scripts/skills.gd); omitted
 # means the class has none.
@@ -44,7 +44,7 @@ const STATS : Dictionary = {
     "knight":   {"mov": 4, "move_type": "infantry", "sprites": {"male": 4}},
     "mage":     {"mov": 5, "move_type": "magic",    "sprites": {"male": 5}},   # placeholder class
     "pegasus_knight": {"mov": 7, "move_type": "flying", "sprites": {"male": Vector2i(1, 1)}},
-    "soldier":  {"mov": 5, "move_type": "infantry", "sprites": {"male": 5}},   # pawn art for now
+    "soldier":  {"mov": 5, "move_type": "infantry", "sprites": {"male": 5}},   # borrowed art for now
 }
 
 ## Movement points for a class.

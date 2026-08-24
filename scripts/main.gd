@@ -3,9 +3,9 @@
 # logic, Overlay, and all UI. Levels are separate content-only scenes
 # (Ground + Units + metadata, see scripts/level.gd) instanced under
 # LevelHolder — _load_level() swaps them in place, so the shell survives
-# across levels and restarts. Mirrors the structure of chess main.gd:
-#   piece_map → unit_map, legal_moves → reachable_cells,
-#   captures → melee combat, and the same undo-snapshot pattern.
+# across levels and restarts. The board state is unit_map (cell → unit),
+# selection is reachable_cells, and every player action pushes an undo
+# snapshot.
 #
 # Levels are authored entirely in the editor — no code changes needed:
 #   • Terrain: paint the level's Ground TileMapLayer. Tiles name their
@@ -221,8 +221,8 @@ func _ready() -> void:
     game_over_screen.get_node("VBoxContainer/RestartButton").pressed.connect(_on_restart_pressed)
     game_over_screen.get_node("VBoxContainer/LevelSelectButton").pressed.connect(_on_level_select_pressed)
 
-    # Level select stashes its pick in tree metadata (the chess-menu
-    # pattern); a plain boot starts the campaign from the top.
+    # Level select stashes its pick in tree metadata; a plain boot
+    # starts the campaign from the top.
     var start : String = Levels.LEVELS[0]
     if get_tree().has_meta("level_path"):
         start = get_tree().get_meta("level_path")
@@ -311,7 +311,7 @@ func _terrain_cost(cell: Vector2i, unit: Area2D) -> int:
     var terrain : String = data.get_custom_data("terrain")
     return ClassStats.terrain_cost(unit.unit_class, terrain)
 
-# ── Movement range (replaces ChessRules.get_legal_moves) ──────────────────────
+# ── Movement range ────────────────────────────────────────────────────────────
 
 ## BFS flood-fill accumulating terrain cost, bounded by the unit's move
 ## range unless max_cost overrides it (the AI passes a huge bound to
@@ -1487,8 +1487,8 @@ func _move_unit_walking(unit: Area2D, target: Vector2i) -> void:
 # flat 2 can't answer an adjacent blade. Damage is attack + equipped
 # weapon might — _attack_damage() is the seam where the remaining rpg
 # stats (def, crit, …) plug in later. The future weapon-choice menu opens
-# inside _begin_combat, between the approach move and the bump — same
-# stash-state-and-resume pattern as the chess promotion panel.
+# inside _begin_combat, between the approach move and the bump, using
+# the same stash-state-and-resume pattern as the other modal panels.
 
 const BUMP_TIME     : float = 0.12  # seconds each way
 const BUMP_DISTANCE : float = 0.45  # fraction of the way into the target's cell
