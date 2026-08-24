@@ -171,7 +171,7 @@ for real (discarding what came after), **Cancel** — or re-clicking the
 Undo button — returns to the present. Enemy responses belong to the
 player action that provoked them and are never separate entries.
 
-Turns follow the classic FE rhythm: select a unit, move it, then a
+Turns follow the genre's classic rhythm: select a unit, move it, then a
 centered action menu resolves the turn. **Attack** (top option, only
 listed when an enemy is within reach of the new position) switches to
 target selection — red squares mark the enemies in range; click one to
@@ -352,7 +352,7 @@ live in `scripts/items.gd` — new items are new entries in that table.
 
 ### Skills & SP
 
-SP is this game's own resource, not an FE mechanic. Every unit
+SP is this game's own resource, not a genre convention. Every unit
 generates SP whenever it **strikes or is struck** — its own `aptitude`
 stat plus the equipped weapon's `aptitude` entry, on both sides of the
 exchange. `max_sp` caps the pool; generation past it is lost. The

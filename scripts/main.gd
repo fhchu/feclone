@@ -162,7 +162,7 @@ var click_selected_unit : Variant    = null  # Area2D node or null (click-to-mov
 var reachable_cells     : Array      = []    # Vector2i cells the unit can end on
 var attack_targets      : Dictionary = {}    # enemy cell → cell to attack from
 
-# ── Pending action state (the FE move-then-menu flow) ──────────────────────────
+# ── Pending action state (the move-then-menu flow) ─────────────────────────────
 # After a unit moves (or elects to act in place), it becomes the pending
 # unit: the action menu owns the turn until Attack or Wait resolves it.
 var _pending_unit           : Variant    = null   # Area2D awaiting a menu decision
@@ -311,7 +311,7 @@ func _terrain_cost(cell: Vector2i, unit: Area2D) -> int:
     var terrain : String = data.get_custom_data("terrain")
     return ClassStats.terrain_cost(unit.unit_class, terrain)
 
-# ── Movement range ────────────────────────────────────────────────────────────
+# ── Movement range ─────────────────────────────────────────────────────────────
 
 ## BFS flood-fill accumulating terrain cost, bounded by the unit's move
 ## range unless max_cost overrides it (the AI passes a huge bound to
@@ -389,9 +389,9 @@ func _get_attack_targets(unit, costs: Dictionary) -> Dictionary:
     return targets
 
 # ── Phases ─────────────────────────────────────────────────────────────────────
-# Alternating team phases, Fire Emblem style: every unit on the active
-# team acts once (greying out as it does), then the phase flips. The
-# banner announces each phase and input stays locked while it plays —
+# Alternating team phases: every unit on the active team acts once
+# (greying out as it does), then the phase flips. The banner announces
+# each phase and input stays locked while it plays —
 # for the whole enemy phase, in fact, since the player never acts in it.
 # The enemy phase runs each red unit through its EnemyAI strategies
 # (scripts/enemy_ai.gd) one at a time, then hands back to the player.
@@ -855,7 +855,7 @@ func _place_info_panel() -> void:
         x = info_panel.get_viewport_rect().size.x - info_panel.size.x - INFO_PANEL_MARGIN
     info_panel.position = Vector2(x, INFO_PANEL_MARGIN)
 
-# ── Action menu (the FE move-then-menu flow) ──────────────────────────────────
+# ── Action menu (the move-then-menu flow) ──────────────────────────────────────
 # Moving a unit no longer ends its turn: the unit walks, then this
 # centered menu owns the turn until Attack or Wait resolves it. Attack
 # only lists when an enemy stands within weapon reach of the unit's
@@ -866,9 +866,10 @@ func _place_info_panel() -> void:
 # the forecast — its first click commits the heal.
 # Clicking anywhere OUTSIDE the open menu cancels the pending action:
 # the approach move is reverted and the unit returns to being merely
-# selected (the FE B-button). Menu buttons are Controls, so the GUI
-# consumes their clicks before _unhandled_input or physics picking see
-# them; unit drags stay locked out while the menu owns the turn.
+# selected (the genre's B-button cancel). Menu buttons are Controls, so
+# the GUI consumes their clicks before _unhandled_input or physics
+# picking sees them; unit drags stay locked out while the menu owns the
+# turn.
 
 ## Opens the menu for a unit that has just moved (snapshot_taken: its
 ## move already pushed the undo snapshot) or is acting in place.
@@ -1264,8 +1265,8 @@ func _on_item_row_pressed(index: int) -> void:
 ## where the equipped weapon lives. Free — the items panel stays open and
 ## the unit still has its action. No snapshot is pushed: equipping isn't
 ## an undoable action, and if the pending move's snapshot predates it we
-## sync that snapshot so cancelling the move keeps the new weapon (FE
-## behaviour: item management survives the B-cancel).
+## sync that snapshot so cancelling the move keeps the new weapon —
+## item management survives a cancel, as the genre expects.
 func _on_equip_pressed(index: int) -> void:
     if _pending_unit == null or not _items_open:
         return
@@ -1538,9 +1539,9 @@ func _can_strike_at(unit: Area2D, dist: int) -> bool:
     return dist >= reach[0] and dist <= reach[1]
 
 # ── SP (skill points) ──────────────────────────────────────────────────────────
-# A mechanic of our own (no Fire Emblem equivalent): every blow that
-# lands feeds SP to BOTH participants — striker and struck alike each
-# gain their own aptitude total. Skills spend it (the Skills menu);
+# A mechanic of our own, with no equivalent in the genre: every blow
+# that lands feeds SP to BOTH participants — striker and struck alike
+# each gain their own aptitude total. Skills spend it (the Skills menu);
 # each unit's yellow gauge under its health bar shows it on the map.
 
 ## SP a unit generates per blow it deals or receives: its aptitude stat

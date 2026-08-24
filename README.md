@@ -1,7 +1,7 @@
 # feclone
 
-A grid-based tactics game in the Fire Emblem tradition, built in Godot 4
-with GDScript.
+A turn-based tactics game played on a grid, built in Godot 4 with
+GDScript.
 
 ![Level 1 — a lord selected, with reachable tiles in blue and the strike range beyond them in red](docs/level1.png)
 

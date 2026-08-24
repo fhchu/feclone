@@ -1,6 +1,6 @@
 // unit_tint.gdshader
 // Desaturates and darkens a unit sprite once it has finished acting this
-// phase (Fire Emblem-style "done" greying). unit.gd drives the uniforms;
+// phase (the genre's "done" greying). unit.gd drives the uniforms;
 // at the defaults the sprite renders unchanged.
 shader_type canvas_item;
 

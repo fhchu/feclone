@@ -24,7 +24,7 @@ const DEFS : Dictionary = {
     # or [min, max] for the 1-2 range swords/lances planned later. The
     # bow's flat 2 means it can neither attack nor counter adjacent.
     # "effective" multiplies the weapon's MIGHT against defenders whose
-    # movement group it names (FE effectiveness — bows punish fliers).
+    # movement group it names (weapon effectiveness — bows punish fliers).
     "iron_sword": {
         "name": "Iron Sword",
         "might": 5,

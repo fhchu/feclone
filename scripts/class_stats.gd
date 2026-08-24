@@ -1,7 +1,7 @@
 # class_stats.gd
 # Base stats per unit class — the single place to touch when adding or
-# tuning classes for balance. Fire Emblem derives stats from class
-# bases + level-up gains; until exp/levels exist, class bases are the
+# tuning classes for balance. The genre derives stats from class bases
+# + level-up gains; until exp and levels exist, class bases are the
 # whole story. Movement terrain costs live here too: each class belongs
 # to a movement type group, and each group has its own price per
 # terrain. Nothing else in the codebase knows these numbers.
